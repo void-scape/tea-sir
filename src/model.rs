@@ -9,19 +9,19 @@ pub struct Model {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct Aabb {
+pub struct Obb {
     pub min: Vec3,
     pub max: Vec3,
 }
 
-pub fn compute_aabb(model: &Model) -> Aabb {
+pub fn compute_obb(model: &Model) -> Obb {
     assert_model(model);
 
     let (minx, maxx) = min_max(model, |v| v.x);
     let (miny, maxy) = min_max(model, |v| v.y);
     let (minz, maxz) = min_max(model, |v| v.z);
 
-    Aabb {
+    Obb {
         min: Vec3::new(minx, miny, minz),
         max: Vec3::new(maxx, maxy, maxz),
     }
@@ -41,14 +41,15 @@ fn min_max(model: &Model, f: impl Fn(&Vec3) -> f32) -> (f32, f32) {
     (f(min), f(max))
 }
 
-pub fn aabb_visible(
+pub fn obb_visible(
     width: usize,
     height: usize,
-    aabb: Aabb,
-    translation: Vec3,
     camera: &Camera,
+    obb: Obb,
+    translation: Vec3,
+    pitch_yaw_roll: Vec3,
 ) -> bool {
-    for v in aabb_corners(aabb, translation).into_iter() {
+    for v in obb_corners(obb, translation, pitch_yaw_roll).into_iter() {
         // TODO: Matrix multiplication would probably be more efficient, especially
         // for `vertex_camera_to_clip_space`
         if crate::math::vertex_world_to_camera_space_clipped(camera, v).is_some_and(|v| {
@@ -61,17 +62,18 @@ pub fn aabb_visible(
     false
 }
 
-pub fn debug_draw_aabb(
+pub fn debug_draw_obb(
     frame_buffer: &mut [Srgb],
     zbuffer: &mut [f32],
     width: usize,
     height: usize,
     camera: &Camera,
-    aabb: Aabb,
+    obb: Obb,
     translation: Vec3,
+    pitch_yaw_roll: Vec3,
     color: Srgb,
 ) {
-    let corners = aabb_corners(aabb, translation);
+    let corners = obb_corners(obb, translation, pitch_yaw_roll);
     let vertices = [
         corners[0], corners[1], corners[2], corners[0], corners[2], corners[3], corners[5],
         corners[4], corners[7], corners[5], corners[7], corners[6], corners[4], corners[0],
@@ -110,10 +112,10 @@ pub fn debug_draw_aabb(
     }
 }
 
-pub fn aabb_corners(aabb: Aabb, translation: Vec3) -> [Vec3; 8] {
-    assert_aabb(aabb);
-    let [minx, miny, minz] = (aabb.min + translation).to_array();
-    let [maxx, maxy, maxz] = (aabb.max + translation).to_array();
+pub fn obb_corners(obb: Obb, translation: Vec3, pitch_yaw_roll: Vec3) -> [Vec3; 8] {
+    assert_obb(obb);
+    let [minx, miny, minz] = obb.min.to_array();
+    let [maxx, maxy, maxz] = obb.max.to_array();
     [
         Vec3::new(minx, miny, minz),
         Vec3::new(maxx, miny, minz),
@@ -124,6 +126,7 @@ pub fn aabb_corners(aabb: Aabb, translation: Vec3) -> [Vec3; 8] {
         Vec3::new(maxx, maxy, maxz),
         Vec3::new(minx, maxy, maxz),
     ]
+    .map(|v| crate::math::transform_vertex(translation, pitch_yaw_roll, v))
 }
 
 #[allow(unused)]
@@ -226,10 +229,10 @@ fn draw_model_inner(
     }
 }
 
-fn assert_aabb(aabb: Aabb) {
-    debug_assert!(aabb.min.x <= aabb.max.x);
-    debug_assert!(aabb.min.y <= aabb.max.y);
-    debug_assert!(aabb.min.z <= aabb.max.z);
+fn assert_obb(obb: Obb) {
+    debug_assert!(obb.min.x <= obb.max.x);
+    debug_assert!(obb.min.y <= obb.max.y);
+    debug_assert!(obb.min.z <= obb.max.z);
 }
 
 fn assert_model(model: &Model) {

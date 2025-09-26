@@ -147,10 +147,11 @@ fn render(memory: &mut Memory, frame_buffer: &mut [Srgb], width: usize, height: 
     memory.angle = (memory.angle + delta) % core::f32::consts::TAU;
     memory.dummy_camera.yaw = memory.angle;
 
-    let aabb = model::compute_aabb(&memory.teapot);
+    let obb = model::compute_obb(&memory.teapot);
     for x in -1..=1 {
         let translation = Vec3::x(x as f32 * 10.0);
-        if model::aabb_visible(width, height, aabb, translation, &memory.camera) {
+        let pyr = Vec3::new(memory.angle, memory.angle, memory.angle);
+        if model::obb_visible(width, height, &memory.camera, obb, translation, pyr) {
             model::draw_model(
                 frame_buffer,
                 memory.zbuffer,
@@ -159,24 +160,25 @@ fn render(memory: &mut Memory, frame_buffer: &mut [Srgb], width: usize, height: 
                 &memory.camera,
                 &memory.teapot,
                 translation,
-                Vec3::y(memory.angle),
+                pyr,
             );
 
             let visible =
-                model::aabb_visible(width, height, aabb, translation, &memory.dummy_camera);
+                model::obb_visible(width, height, &memory.dummy_camera, obb, translation, pyr);
             let color = if visible {
                 Srgb::rgb(0, 255, 0)
             } else {
                 Srgb::rgb(255, 0, 0)
             };
-            model::debug_draw_aabb(
+            model::debug_draw_obb(
                 frame_buffer,
                 memory.zbuffer,
                 width,
                 height,
                 &memory.camera,
-                aabb,
+                obb,
                 translation,
+                pyr,
                 color,
             );
         }

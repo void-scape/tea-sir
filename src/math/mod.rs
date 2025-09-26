@@ -56,7 +56,7 @@ pub fn vertex_world_to_camera_space_clipped(camera: &Camera, v: Vec3) -> Option<
     let camera_space = (v - camera.translation)
         .rotate_y(-camera.yaw)
         .rotate_x(-camera.pitch);
-    (camera_space.z > camera.nearz).then_some(camera_space)
+    (camera_space.z >= camera.nearz && camera_space.z <= camera.farz).then_some(camera_space)
 }
 
 pub fn triangle_camera_to_screen_space(
