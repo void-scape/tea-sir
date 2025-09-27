@@ -61,7 +61,7 @@ pub fn handle_input(input: glazer::Input, camera: &mut Camera, controller: &mut 
 }
 
 pub fn update_camera(camera: &mut Camera, controller: &CameraController, delta: f32) {
-    let speed = 10.0 * delta;
+    let speed = 100.0 * delta;
     let mut camera_delta = Vec3::ZERO;
 
     if controller.forward_pressed {
@@ -88,6 +88,7 @@ pub fn update_camera(camera: &mut Camera, controller: &CameraController, delta: 
     }
 }
 
+#[allow(unused)]
 pub fn debug_draw_frustum(
     frame_buffer: &mut [Srgb],
     zbuffer: &mut [f32],
@@ -96,6 +97,7 @@ pub fn debug_draw_frustum(
     camera_to_debug: &Camera,
     camera_for_view: &Camera,
 ) {
+    debug_assert_eq!(frame_buffer.len(), zbuffer.len());
     let camera = camera_to_debug;
     let fov_2y = camera.fov.to_radians() / 2.0;
     // NOTE: The angles are not linear, so you can't just do `fov_2y * aspect`. I
@@ -146,14 +148,14 @@ pub fn debug_draw_frustum(
                 zbuffer,
                 width,
                 height,
-                v1.x,
-                v1.y,
+                libm::floorf(v1.x) as i32,
+                libm::floorf(v1.y) as i32,
                 v1.z,
-                v2.x,
-                v2.y,
+                libm::floorf(v2.x) as i32,
+                libm::floorf(v2.y) as i32,
                 v2.z,
-                v3.x,
-                v3.y,
+                libm::floorf(v3.x) as i32,
+                libm::floorf(v3.y) as i32,
                 v3.z,
                 Srgb::rgb(0, 0, 255),
             );

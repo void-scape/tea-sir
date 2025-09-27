@@ -5,15 +5,21 @@ use rast::tint::*;
 #[derive(Default)]
 pub struct Model {
     pub faces: Vec<usize>,
+    // (uv index, texture index)
+    pub face_textures: Vec<(usize, usize)>,
+
     pub verts: Vec<Vec3>,
+    pub uvs: Vec<Vec2>,
+    pub textures: Vec<(usize, usize, Vec<Srgb>)>,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Default, Clone, Copy)]
 pub struct Obb {
     pub min: Vec3,
     pub max: Vec3,
 }
 
+#[allow(unused)]
 pub fn compute_obb(model: &Model) -> Obb {
     assert_model(model);
 
@@ -41,6 +47,7 @@ fn min_max(model: &Model, f: impl Fn(&Vec3) -> f32) -> (f32, f32) {
     (f(min), f(max))
 }
 
+#[allow(unused)]
 pub fn obb_visible(
     width: usize,
     height: usize,
@@ -62,6 +69,7 @@ pub fn obb_visible(
     false
 }
 
+#[allow(unused)]
 pub fn debug_draw_obb(
     frame_buffer: &mut [Srgb],
     zbuffer: &mut [f32],
@@ -73,6 +81,7 @@ pub fn debug_draw_obb(
     pitch_yaw_roll: Vec3,
     color: Srgb,
 ) {
+    debug_assert_eq!(frame_buffer.len(), zbuffer.len());
     let corners = obb_corners(obb, translation, pitch_yaw_roll);
     let vertices = [
         corners[0], corners[1], corners[2], corners[0], corners[2], corners[3], corners[5],
@@ -97,14 +106,14 @@ pub fn debug_draw_obb(
                 zbuffer,
                 width,
                 height,
-                v1.x,
-                v1.y,
+                libm::floorf(v1.x) as i32,
+                libm::floorf(v1.y) as i32,
                 v1.z,
-                v2.x,
-                v2.y,
+                libm::floorf(v2.x) as i32,
+                libm::floorf(v2.y) as i32,
                 v2.z,
-                v3.x,
-                v3.y,
+                libm::floorf(v3.x) as i32,
+                libm::floorf(v3.y) as i32,
                 v3.z,
                 color,
             );
@@ -189,6 +198,90 @@ fn draw_model_inner(
     backface: bool,
 ) {
     assert_model(model);
+    debug_assert_eq!(frame_buffer.len(), zbuffer.len());
+
+    if model.textures.is_empty() {
+        draw_model_inner_no_textures(
+            frame_buffer,
+            zbuffer,
+            width,
+            height,
+            camera,
+            model,
+            translation,
+            pitch_yaw_roll,
+            backface,
+        );
+        return;
+    }
+
+    for (face, face_textures) in model.faces.chunks(3).zip(model.face_textures.chunks(3)) {
+        let v1 = transform_vertex(translation, pitch_yaw_roll, model.verts[face[0]]);
+        let v2 = transform_vertex(translation, pitch_yaw_roll, model.verts[face[1]]);
+        let v3 = transform_vertex(translation, pitch_yaw_roll, model.verts[face[2]]);
+
+        if let Some((v1, v2, v3)) =
+            crate::math::triangle_world_to_camera_space_clipped(camera, v1, v2, v3)
+        {
+            if backface {
+                // https://en.wikipedia.org/wiki/Back-face_culling#Implementation
+                let normal = (v3 - v1).cross(v2 - v1);
+                if v1.dot(normal) < 0.0 {
+                    continue;
+                }
+            }
+
+            debug_assert_eq!(face_textures[0].1, face_textures[1].1);
+            debug_assert_eq!(face_textures[2].1, face_textures[1].1);
+
+            let texture = &model.textures[face_textures[0].1];
+            let (uv, _) = face_textures[0];
+            let uv1 = model.uvs[uv];
+            let (uv, _) = face_textures[1];
+            let uv2 = model.uvs[uv];
+            let (uv, _) = face_textures[2];
+            let uv3 = model.uvs[uv];
+
+            let (v1, v2, v3) = triangle_camera_to_screen_space(width, height, camera, v1, v2, v3);
+            rast::rast_triangle_checked(
+                frame_buffer,
+                zbuffer,
+                width,
+                height,
+                libm::floorf(v1.x) as i32,
+                libm::floorf(v1.y) as i32,
+                v1.z,
+                libm::floorf(v2.x) as i32,
+                libm::floorf(v2.y) as i32,
+                v2.z,
+                libm::floorf(v3.x) as i32,
+                libm::floorf(v3.y) as i32,
+                v3.z,
+                (uv1.x, uv1.y),
+                (uv2.x, uv2.y),
+                (uv3.x, uv3.y),
+                rast::TextureShader {
+                    width: texture.0,
+                    height: texture.1,
+                    texture: texture.2.as_slice(),
+                    sampler: rast::Sampler::Bilinear,
+                },
+            );
+        }
+    }
+}
+
+fn draw_model_inner_no_textures(
+    frame_buffer: &mut [Srgb],
+    zbuffer: &mut [f32],
+    width: usize,
+    height: usize,
+    camera: &Camera,
+    model: &Model,
+    translation: Vec3,
+    pitch_yaw_roll: Vec3,
+    backface: bool,
+) {
     for face in model.faces.chunks(3) {
         let v1 = transform_vertex(translation, pitch_yaw_roll, model.verts[face[0]]);
         let v2 = transform_vertex(translation, pitch_yaw_roll, model.verts[face[1]]);
@@ -211,14 +304,14 @@ fn draw_model_inner(
                 zbuffer,
                 width,
                 height,
-                v1.x,
-                v1.y,
+                libm::floorf(v1.x) as i32,
+                libm::floorf(v1.y) as i32,
                 v1.z,
-                v2.x,
-                v2.y,
+                libm::floorf(v2.x) as i32,
+                libm::floorf(v2.y) as i32,
                 v2.z,
-                v3.x,
-                v3.y,
+                libm::floorf(v3.x) as i32,
+                libm::floorf(v3.y) as i32,
                 v3.z,
                 LinearRgb::rgb(1.0, 0.0, 0.0),
                 LinearRgb::rgb(0.0, 1.0, 0.0),
@@ -239,4 +332,12 @@ fn assert_model(model: &Model) {
     debug_assert!(!model.verts.is_empty());
     debug_assert!(!model.faces.is_empty());
     debug_assert!(model.faces.len() % 3 == 0);
+    debug_assert!(model.face_textures.len() % 3 == 0);
+    debug_assert!(
+        model.face_textures.is_empty() == model.uvs.is_empty()
+            && model.uvs.is_empty() == model.textures.is_empty()
+    );
+    if !model.face_textures.is_empty() {
+        debug_assert_eq!(model.faces.len(), model.face_textures.len());
+    }
 }

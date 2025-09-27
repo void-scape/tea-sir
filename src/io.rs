@@ -1,5 +1,6 @@
 use alloc::string::String;
 use alloc::vec::Vec;
+use rast::tint::Srgb;
 
 use crate::math::*;
 
@@ -27,6 +28,19 @@ pub fn debug_audio_file(path: &str) -> Option<Vec<i16>> {
     Some(unsafe { Vec::from_raw_parts(ptr as *mut i16, length / 2, capacity / 2) })
 }
 
+pub fn debug_image_file(path: &str) -> Option<(usize, usize, Vec<Srgb>)> {
+    let bytes = debug_read_file(path)?;
+    assert!(bytes.len() % 4 == 0);
+    let width = u32::from_le_bytes(bytes[..4].try_into().unwrap());
+    let height = u32::from_le_bytes(bytes[4..8].try_into().unwrap());
+    assert_eq!(width * height, (bytes.len() as u32 - 8) / 4);
+    let mut pixels = alloc::vec![Srgb::rgb(0, 0, 0); (bytes.len() - 8) / 4];
+    for (i, rgba) in bytes[8..].chunks(4).enumerate() {
+        pixels[i] = Srgb::new(rgba[0], rgba[1], rgba[2], rgba[3]);
+    }
+    Some((width as usize, height as usize, pixels))
+}
+
 // # List of geometric vertices, with (x, y, z, [w]) coordinates, w is optional and defaults to 1.0.
 // v 0.123 0.234 0.345 1.0
 // v ...
@@ -52,10 +66,13 @@ pub fn debug_audio_file(path: &str) -> Option<Vec<i16>> {
 // ...
 // # Line element (see below)
 // l 5 8 1 2 4 9
-pub fn debug_obj_file(path: &str) -> Option<crate::model::Model> {
+pub fn debug_obj_file(
+    path: &str,
+    materials: Vec<(String, (usize, usize, Vec<Srgb>))>,
+) -> Option<crate::model::Model> {
     let obj = debug_read_file_to_string(path)?;
 
-    let (millis, (verts, faces)) = glazer::debug_time_millis(|| {
+    let (millis, (faces, face_textures, verts, uvs, textures)) = glazer::debug_time_millis(|| {
         fn read<F: core::str::FromStr>(input: &mut &str) -> Option<F> {
             let split_at = input.chars().position(|c| c.is_whitespace());
             match split_at {
@@ -68,35 +85,86 @@ pub fn debug_obj_file(path: &str) -> Option<crate::model::Model> {
             }
         }
 
-        let mut verts = Vec::new();
-        for mut slice in obj.split("v ").filter(|str| !str.is_empty()) {
-            let input = &mut slice;
-            let p1 = read::<f32>(input).unwrap();
-            let p2 = read(input).unwrap();
-            let p3 = read(input).unwrap();
-            verts.push(Vec3::new(p1, p2, p3));
+        fn eat_line<'a>(input: &mut &'a str) -> &'a str {
+            let to = input
+                .char_indices()
+                .find_map(|(i, c)| (c == '\n').then_some(i))
+                .unwrap_or_else(|| input.len());
+            let out = &input[..to];
+            *input = &input[(to + 1).min(input.len())..];
+            out
         }
 
         let mut faces = Vec::new();
-        for mut slice in obj
-            .split("f ")
-            .filter(|str| !str.is_empty() && !str.starts_with("v "))
-        {
-            let input = &mut slice;
-            let v1 = read::<usize>(input).unwrap();
-            let v2 = read::<usize>(input).unwrap();
-            let v3 = read::<usize>(input).unwrap();
-            faces.extend([v1 - 1, v2 - 1, v3 - 1]);
+        let mut face_textures = Vec::new();
+        let mut verts = Vec::new();
+        let mut uvs = Vec::new();
+        let mut textures = Vec::new();
+
+        let mut texture_index = 0;
+
+        let input = &mut obj.as_str();
+        while !input.is_empty() {
+            let line = eat_line(input);
+            if line.starts_with("v ") {
+                let input = &mut &line[2..];
+                let p1 = read::<f32>(input).unwrap();
+                let p2 = read(input).unwrap();
+                let p3 = read(input).unwrap();
+                verts.push(Vec3::new(p1, p2, p3));
+            } else if line.starts_with("vt ") {
+                let input = &mut &line[3..];
+                let p1 = read::<f32>(input).unwrap();
+                let p2 = read(input).unwrap();
+                uvs.push(Vec2::new(p1, p2));
+            } else if line.starts_with("f ") {
+                let input = &mut &line[2..];
+                if line.contains("/") {
+                    for vset in input.split_whitespace() {
+                        for (i, mut v) in vset.split("/").enumerate() {
+                            if i == 0 {
+                                faces.push(read::<usize>(&mut v).unwrap() - 1);
+                            } else if i == 1 {
+                                face_textures
+                                    .push((read::<usize>(&mut v).unwrap() - 1, texture_index));
+                            }
+                        }
+                    }
+                } else {
+                    let v1 = read::<usize>(input).unwrap();
+                    let v2 = read::<usize>(input).unwrap();
+                    let v3 = read::<usize>(input).unwrap();
+                    faces.extend([v1 - 1, v2 - 1, v3 - 1]);
+                }
+            } else if line.starts_with("usemtl") {
+                if !textures.is_empty() {
+                    texture_index += 1;
+                }
+                textures.push(
+                    materials
+                        .iter()
+                        .find_map(|(name, texture)| (name == &line[7..]).then_some(texture))
+                        .cloned()
+                        .unwrap_or_else(|| panic!("failed to find obj mtl: `{}`", &line[7..])),
+                );
+            }
         }
 
-        (verts, faces)
+        (faces, face_textures, verts, uvs, textures)
     });
 
     glazer::log!(
-        "obj: loaded {} verts, {} faces in {millis:.2}ms",
+        "obj `{}`: loaded {} verts, {} faces in {millis:.2}ms",
+        path,
         verts.len(),
         faces.len()
     );
 
-    Some(crate::model::Model { faces, verts })
+    Some(crate::model::Model {
+        faces,
+        face_textures,
+        verts,
+        uvs,
+        textures,
+    })
 }

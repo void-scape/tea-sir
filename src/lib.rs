@@ -3,14 +3,14 @@
 
 extern crate alloc;
 
-use alloc::vec::Vec;
+use alloc::{string::ToString, vec::Vec};
 
 use math::*;
 use rast::tint::*;
 
 use crate::{
     camera::{Camera, CameraController},
-    model::Model,
+    model::{Model, Obb},
 };
 
 mod camera;
@@ -22,7 +22,7 @@ pub const MAX_WIDTH: usize = 640 * 2;
 pub const MAX_HEIGHT: usize = 360 * 2;
 pub const MAX_PIXELS: usize = MAX_WIDTH * MAX_HEIGHT;
 
-// Initilization code for the platform. The game code provides a static frame
+// Initialization code for the platform. The game code provides a static frame
 // buffer and the game memory on startup. This memory is persisted when hot
 // reloaded.
 
@@ -59,28 +59,42 @@ pub fn memory() -> Memory<'static> {
             panic!("tried to call `memory` twice");
         }
         INIT = true;
+
+        let materials = [
+            ("assets/ibuki/bloomers.bin", "bloomers"),
+            ("assets/ibuki/coat.bin", "coat"),
+            ("assets/ibuki/face.bin", "face"),
+            ("assets/ibuki/halo.bin", "halo"),
+            ("assets/ibuki/package.bin", "package"),
+            ("assets/ibuki/body.bin", "body"),
+            ("assets/ibuki/eye.bin", "eye"),
+            ("assets/ibuki/hair.bin", "hair"),
+            ("assets/ibuki/shirt.bin", "shirt"),
+        ]
+        .into_iter()
+        .map(|(path, name)| io::debug_image_file(path).map(|img| (name.to_string(), img)))
+        .collect::<Option<Vec<_>>>()
+        .expect("failed to load ibuki materials");
+
+        let ibuki = io::debug_obj_file("assets/ibuki/ibuki.obj", materials)
+            .expect("could not load `ibuki.obj`");
         Memory {
             #[allow(static_mut_refs)]
             zbuffer: &mut DEPTH_BUFFER,
             camera: Camera {
-                translation: Vec3::new(-4.0, 0.0, -4.0),
+                translation: Vec3::new(0.0, 40.0, -70.0),
                 pitch: 0.0,
-                yaw: 20f32.to_radians(),
+                yaw: 0.0,
                 fov: 100.0,
                 nearz: 0.1,
                 farz: 1000.0,
             },
-            dummy_camera: Camera {
-                translation: Vec3::new(0.0, 1.5, -8.0),
-                pitch: 0.0,
-                yaw: 0.0,
-                fov: 75.0,
-                nearz: 0.1,
-                farz: 10.0,
-            },
-            divine_comedy: io::debug_audio_file("assets/divine_comedy.bin")
-                .expect("could not load `divine_comedy.bin`"),
-            teapot: io::debug_obj_file("assets/teapot.obj").expect("could not load `teapot.obj`"),
+            divine_comedy: io::debug_audio_file("assets/divine-comedy.bin")
+                .expect("could not load `divine-comedy.bin`"),
+            teapot: io::debug_obj_file("assets/teapot.obj", Vec::new())
+                .expect("could not load `teapot.obj`"),
+            ibuki_obb: model::compute_obb(&ibuki),
+            ibuki,
             ..Default::default()
         }
     }
@@ -94,19 +108,22 @@ pub struct Memory<'a> {
 
     camera: Camera,
     controller: CameraController,
-    dummy_camera: Camera,
 
     bg: f32,
     angle: f32,
     divine_comedy: Vec<i16>,
     teapot: Model,
+    ibuki: Model,
+    ibuki_obb: Obb,
     play_cursor: usize,
 }
 
+#[unsafe(no_mangle)]
 pub fn handle_input(glazer::PlatformInput { memory, input }: glazer::PlatformInput<Memory>) {
     camera::handle_input(input, &mut memory.camera, &mut memory.controller);
 }
 
+#[unsafe(no_mangle)]
 pub fn update_and_render(
     glazer::PlatformUpdate {
         memory,
@@ -145,11 +162,39 @@ fn render(memory: &mut Memory, frame_buffer: &mut [Srgb], width: usize, height: 
 
     memory.zbuffer.fill(1.0);
     memory.angle = (memory.angle + delta) % core::f32::consts::TAU;
-    memory.dummy_camera.yaw = memory.angle;
+
+    let obb = memory.ibuki_obb;
+    let translation = Vec3::ZERO;
+    // let pyr = Vec3::ZERO;
+    let pyr = Vec3::new(0.0, memory.angle, 0.0);
+    if model::obb_visible(width, height, &memory.camera, obb, translation, pyr) {
+        model::draw_model(
+            frame_buffer,
+            memory.zbuffer,
+            width,
+            height,
+            &memory.camera,
+            &memory.ibuki,
+            translation,
+            pyr,
+        );
+
+        model::debug_draw_obb(
+            frame_buffer,
+            memory.zbuffer,
+            width,
+            height,
+            &memory.camera,
+            obb,
+            translation,
+            pyr,
+            Srgb::rgb(0, 255, 0),
+        );
+    }
 
     let obb = model::compute_obb(&memory.teapot);
     for x in -1..=1 {
-        let translation = Vec3::x(x as f32 * 10.0);
+        let translation = Vec3::x(x as f32 * 10.0 + 50.0);
         let pyr = Vec3::new(memory.angle, memory.angle, memory.angle);
         if model::obb_visible(width, height, &memory.camera, obb, translation, pyr) {
             model::draw_model(
@@ -163,13 +208,6 @@ fn render(memory: &mut Memory, frame_buffer: &mut [Srgb], width: usize, height: 
                 pyr,
             );
 
-            let visible =
-                model::obb_visible(width, height, &memory.dummy_camera, obb, translation, pyr);
-            let color = if visible {
-                Srgb::rgb(0, 255, 0)
-            } else {
-                Srgb::rgb(255, 0, 0)
-            };
             model::debug_draw_obb(
                 frame_buffer,
                 memory.zbuffer,
@@ -179,18 +217,42 @@ fn render(memory: &mut Memory, frame_buffer: &mut [Srgb], width: usize, height: 
                 obb,
                 translation,
                 pyr,
-                color,
+                Srgb::rgb(0, 255, 0),
             );
         }
     }
+}
 
-    camera::debug_draw_frustum(
+#[expect(unused)]
+fn draw_quad(memory: &mut Memory, frame_buffer: &mut [Srgb], width: usize, height: usize) {
+    let scale = 200.0;
+    let offset = 500.0;
+    let pyr = Vec3::z(memory.angle);
+    let corners = [
+        Vec3::new(0.0, 0.0, 0.0),
+        Vec3::new(1.0, 0.0, 0.0),
+        Vec3::new(1.0, 1.0, 0.0),
+        Vec3::new(0.0, 1.0, 0.0),
+    ]
+    .map(|v| math::transform_vertex(Vec3::new(offset, offset, offset), pyr, v * scale));
+
+    rast::rast_quad(
         frame_buffer,
-        memory.zbuffer,
         width,
         height,
-        &memory.dummy_camera,
-        &memory.camera,
+        corners[0].x as i32,
+        corners[0].y as i32,
+        corners[1].x as i32,
+        corners[1].y as i32,
+        corners[2].x as i32,
+        corners[2].y as i32,
+        corners[3].x as i32,
+        corners[3].y as i32,
+        Srgb::rgb(255, 0, 0).into(),
+        Srgb::rgb(0, 255, 0).into(),
+        Srgb::rgb(0, 0, 255).into(),
+        Srgb::rgb(255, 255, 255).into(),
+        rast::ColorShader,
     );
 }
 

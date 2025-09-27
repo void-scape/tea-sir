@@ -23,5 +23,7 @@ fn main() {
         demo::MAX_HEIGHT,
         demo::handle_input,
         demo::update_and_render,
+        "/Users/nicolasball/dev/games/tea-sir/\
+                target/aarch64-apple-darwin/debug/libdemo.dylib",
     );
 }
