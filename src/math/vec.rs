@@ -53,13 +53,27 @@ impl Vec3 {
     }
 
     #[inline]
+    #[must_use]
     pub fn length(self) -> f32 {
         libm::sqrtf(self.length_squared())
     }
 
     #[inline]
+    #[must_use]
     pub fn length_squared(self) -> f32 {
         self.x * self.x + self.y * self.y + self.z * self.z
+    }
+
+    #[inline]
+    #[must_use]
+    pub fn distance(self, other: Self) -> f32 {
+        (self - other).length()
+    }
+
+    #[inline]
+    #[must_use]
+    pub fn distance_squared(self, other: Self) -> f32 {
+        (self - other).length_squared()
     }
 
     #[inline]
@@ -100,11 +114,11 @@ impl Vec3 {
 
     #[inline]
     #[must_use]
-    pub fn rotate_x(self, angle: f32) -> Vec3 {
+    pub fn rotate_x(self, angle: f32) -> Self {
         let cos = libm::cosf(angle);
         let sin = libm::sinf(angle);
 
-        Vec3 {
+        Self {
             x: self.x,
             y: self.y * cos - self.z * sin,
             z: self.y * sin + self.z * cos,
@@ -113,11 +127,11 @@ impl Vec3 {
 
     #[inline]
     #[must_use]
-    pub fn rotate_y(self, angle: f32) -> Vec3 {
+    pub fn rotate_y(self, angle: f32) -> Self {
         let cos = libm::cosf(angle);
         let sin = libm::sinf(angle);
 
-        Vec3 {
+        Self {
             x: self.x * cos + self.z * sin,
             y: self.y,
             z: -self.x * sin + self.z * cos,
@@ -126,11 +140,11 @@ impl Vec3 {
 
     #[inline]
     #[must_use]
-    pub fn rotate_z(self, angle: f32) -> Vec3 {
+    pub fn rotate_z(self, angle: f32) -> Self {
         let cos = libm::cosf(angle);
         let sin = libm::sinf(angle);
 
-        Vec3 {
+        Self {
             x: self.x * cos - self.y * sin,
             y: self.x * sin + self.y * cos,
             z: self.z,
@@ -254,8 +268,182 @@ impl core::ops::Neg for Vec2 {
     }
 }
 
+#[derive(Debug, Default, Clone, Copy, PartialEq)]
+pub struct DVec3 {
+    pub x: f64,
+    pub y: f64,
+    pub z: f64,
+}
+
+impl DVec3 {
+    pub const ZERO: Self = Self::new(0.0, 0.0, 0.0);
+
+    #[inline]
+    pub const fn new(x: f64, y: f64, z: f64) -> Self {
+        Self { x, y, z }
+    }
+
+    #[inline]
+    pub const fn x(x: f64) -> Self {
+        Self { x, ..Self::ZERO }
+    }
+
+    #[inline]
+    pub const fn y(y: f64) -> Self {
+        Self { y, ..Self::ZERO }
+    }
+
+    #[inline]
+    pub const fn z(z: f64) -> Self {
+        Self { z, ..Self::ZERO }
+    }
+
+    #[inline]
+    #[must_use]
+    pub const fn to_vec3(self) -> Vec3 {
+        Vec3 {
+            x: self.x as f32,
+            y: self.y as f32,
+            z: self.z as f32,
+        }
+    }
+
+    #[inline]
+    #[must_use]
+    pub const fn cross(self, other: Self) -> Self {
+        Self {
+            x: self.y * other.z - other.y * self.z,
+            y: self.z * other.x - other.z * self.x,
+            z: self.x * other.y - other.x * self.y,
+        }
+    }
+
+    #[inline]
+    #[must_use]
+    pub fn dot(self, other: Self) -> f64 {
+        (self.x * other.x) + (self.y * other.y) + (self.z * other.z)
+    }
+
+    #[inline]
+    #[must_use]
+    pub fn length(self) -> f64 {
+        libm::sqrt(self.length_squared())
+    }
+
+    #[inline]
+    #[must_use]
+    pub fn length_squared(self) -> f64 {
+        self.x * self.x + self.y * self.y + self.z * self.z
+    }
+
+    #[inline]
+    #[must_use]
+    pub fn distance(self, other: Self) -> f64 {
+        (self - other).length()
+    }
+
+    #[inline]
+    #[must_use]
+    pub fn distance_squared(self, other: Self) -> f64 {
+        (self - other).length_squared()
+    }
+
+    #[inline]
+    #[must_use]
+    pub fn normalize(self) -> Self {
+        let length = self.length();
+        assert!(
+            length != 0.0,
+            "tried to call `DVec3::normalize` with a length of 0.0"
+        );
+        Self {
+            x: self.x / length,
+            y: self.y / length,
+            z: self.z / length,
+        }
+    }
+
+    #[inline]
+    #[must_use]
+    pub fn normalize_or_zero(self) -> Self {
+        let length = self.length();
+        if length == 0.0 {
+            Self::default()
+        } else {
+            Self {
+                x: self.x / length,
+                y: self.y / length,
+                z: self.z / length,
+            }
+        }
+    }
+
+    #[inline]
+    #[must_use]
+    pub fn element_sum(self) -> f64 {
+        self.x + self.y + self.z
+    }
+
+    #[inline]
+    #[must_use]
+    pub fn rotate_x(self, angle: f64) -> Self {
+        let cos = libm::cos(angle);
+        let sin = libm::sin(angle);
+
+        Self {
+            x: self.x,
+            y: self.y * cos - self.z * sin,
+            z: self.y * sin + self.z * cos,
+        }
+    }
+
+    #[inline]
+    #[must_use]
+    pub fn rotate_y(self, angle: f64) -> Self {
+        let cos = libm::cos(angle);
+        let sin = libm::sin(angle);
+
+        Self {
+            x: self.x * cos + self.z * sin,
+            y: self.y,
+            z: -self.x * sin + self.z * cos,
+        }
+    }
+
+    #[inline]
+    #[must_use]
+    pub fn rotate_z(self, angle: f64) -> Self {
+        let cos = libm::cos(angle);
+        let sin = libm::sin(angle);
+
+        Self {
+            x: self.x * cos - self.y * sin,
+            y: self.x * sin + self.y * cos,
+            z: self.z,
+        }
+    }
+
+    #[inline]
+    #[must_use]
+    pub fn to_array(self) -> [f64; 3] {
+        [self.x, self.y, self.z]
+    }
+}
+
+impl core::ops::Neg for DVec3 {
+    type Output = Self;
+
+    fn neg(self) -> Self::Output {
+        Self {
+            x: -self.x,
+            y: -self.y,
+            z: -self.z,
+        }
+    }
+}
+
 macro_rules! impl_math_ops {
-    ($ty:path, $($field:ident),*) => {
+    ($ty:path, $prim:ident, $($field:ident),*) => {
         impl core::ops::Add for $ty {
             type Output = Self;
 
@@ -320,71 +508,72 @@ macro_rules! impl_math_ops {
             }
         }
 
-        impl core::ops::Add<f32> for $ty {
+        impl core::ops::Add<$prim> for $ty {
             type Output = Self;
 
-            fn add(self, rhs: f32) -> Self::Output {
+            fn add(self, rhs: $prim) -> Self::Output {
                 Self {
                     $($field: self.$field + rhs,)*
                 }
             }
         }
 
-        impl core::ops::Sub<f32> for $ty {
+        impl core::ops::Sub<$prim> for $ty {
             type Output = Self;
 
-            fn sub(self, rhs: f32) -> Self::Output {
+            fn sub(self, rhs: $prim) -> Self::Output {
                 Self {
                     $($field: self.$field - rhs,)*
                 }
             }
         }
 
-        impl core::ops::Mul<f32> for $ty {
+        impl core::ops::Mul<$prim> for $ty {
             type Output = Self;
 
-            fn mul(self, rhs: f32) -> Self::Output {
+            fn mul(self, rhs: $prim) -> Self::Output {
                 Self {
                     $($field: self.$field * rhs,)*
                 }
             }
         }
 
-        impl core::ops::Div<f32> for $ty {
+        impl core::ops::Div<$prim> for $ty {
             type Output = Self;
 
-            fn div(self, rhs: f32) -> Self::Output {
+            fn div(self, rhs: $prim) -> Self::Output {
                 Self {
                     $($field: self.$field / rhs,)*
                 }
             }
         }
 
-        impl core::ops::AddAssign<f32> for $ty {
-            fn add_assign(&mut self, rhs: f32) {
+        impl core::ops::AddAssign<$prim> for $ty {
+            fn add_assign(&mut self, rhs: $prim) {
                 $(self.$field += rhs;)*
             }
         }
 
-        impl core::ops::SubAssign<f32> for $ty {
-            fn sub_assign(&mut self, rhs: f32) {
+        impl core::ops::SubAssign<$prim> for $ty {
+            fn sub_assign(&mut self, rhs: $prim) {
                 $(self.$field -= rhs;)*
             }
         }
 
-        impl core::ops::MulAssign<f32> for $ty {
-            fn mul_assign(&mut self, rhs: f32) {
+        impl core::ops::MulAssign<$prim> for $ty {
+            fn mul_assign(&mut self, rhs: $prim) {
                 $(self.$field *= rhs;)*
             }
         }
 
-        impl core::ops::DivAssign<f32> for $ty {
-            fn div_assign(&mut self, rhs: f32) {
+        impl core::ops::DivAssign<$prim> for $ty {
+            fn div_assign(&mut self, rhs: $prim) {
                 $(self.$field /= rhs;)*
             }
         }
     };
 }
 
-impl_math_ops!(Vec2, x, y);
-impl_math_ops!(Vec3, x, y, z);
+impl_math_ops!(Vec2, f32, x, y);
+impl_math_ops!(Vec3, f32, x, y, z);
+impl_math_ops!(DVec3, f64, x, y, z);

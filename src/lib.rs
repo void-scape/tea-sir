@@ -5,18 +5,23 @@ extern crate alloc;
 
 use alloc::{string::ToString, vec::Vec};
 
+use boids::*;
 use math::*;
 use rast::tint::*;
 
 use crate::{
     camera::{Camera, CameraController},
     model::{Model, Obb},
+    neutron::NeutronMemory,
 };
 
+mod boids;
 mod camera;
 mod io;
 pub mod math;
 mod model;
+mod neutron;
+mod rng;
 
 pub const MAX_WIDTH: usize = 640 * 2;
 pub const MAX_HEIGHT: usize = 360 * 2;
@@ -82,10 +87,10 @@ pub fn memory() -> Memory<'static> {
             #[allow(static_mut_refs)]
             zbuffer: &mut DEPTH_BUFFER,
             camera: Camera {
-                translation: Vec3::new(0.0, 40.0, -70.0),
-                pitch: 0.0,
+                translation: Vec3::new(0.0, 15.0, -15.0),
+                pitch: 45f32.to_radians(),
                 yaw: 0.0,
-                fov: 100.0,
+                fov: 80.0,
                 nearz: 0.1,
                 farz: 1000.0,
             },
@@ -108,6 +113,9 @@ pub struct Memory<'a> {
 
     camera: Camera,
     controller: CameraController,
+
+    _boid_memory: BoidMemory,
+    neutron_memory: NeutronMemory,
 
     bg: f32,
     angle: f32,
@@ -139,9 +147,31 @@ pub fn update_and_render(
         ..
     }: glazer::PlatformUpdate<Memory, Srgb>,
 ) {
-    camera::update_camera(&mut memory.camera, &memory.controller, delta);
     audio(memory, samples, channels, sample_rate);
-    render(memory, frame_buffer, width, height, delta);
+    camera::update_camera(&mut memory.camera, &memory.controller, delta);
+
+    neutron::update(&mut memory.neutron_memory, delta);
+    neutron::render(
+        &mut memory.neutron_memory,
+        frame_buffer,
+        &mut memory.zbuffer,
+        width,
+        height,
+        &memory.camera,
+    );
+
+    // clear(memory, frame_buffer);
+    // boids::update(&mut memory.boid_memory, delta);
+    // boids::render(
+    //     &mut memory.boid_memory,
+    //     frame_buffer,
+    //     &mut memory.zbuffer,
+    //     width,
+    //     height,
+    //     &memory.camera,
+    // );
+    //
+    // render(memory, frame_buffer, width, height, delta);
 }
 
 fn audio(memory: &mut Memory, samples: &mut [i16], channels: usize, sample_rate: f32) {
@@ -157,10 +187,14 @@ fn audio(memory: &mut Memory, samples: &mut [i16], channels: usize, sample_rate:
     }
 }
 
-fn render(memory: &mut Memory, frame_buffer: &mut [Srgb], width: usize, height: usize, delta: f32) {
+#[allow(unused)]
+fn clear(memory: &mut Memory, frame_buffer: &mut [Srgb]) {
     frame_buffer.fill(Srgb::rgb(82, 82, 82));
-
     memory.zbuffer.fill(1.0);
+}
+
+#[allow(unused)]
+fn render(memory: &mut Memory, frame_buffer: &mut [Srgb], width: usize, height: usize, delta: f32) {
     memory.angle = (memory.angle + delta) % core::f32::consts::TAU;
 
     let obb = memory.ibuki_obb;

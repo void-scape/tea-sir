@@ -30,16 +30,6 @@ pub fn triangle_world_to_screen_space_clipped(
         .map(|(v1, v2, v3)| triangle_camera_to_screen_space(width, height, camera, v1, v2, v3))
 }
 
-pub fn vertex_world_to_screen_space_clipped(
-    width: usize,
-    height: usize,
-    camera: &Camera,
-    v: Vec3,
-) -> Option<Vec3> {
-    vertex_world_to_camera_space_clipped(camera, v)
-        .map(|v| vertex_camera_to_screen_space(width, height, camera, v))
-}
-
 pub fn triangle_world_to_camera_space_clipped(
     camera: &Camera,
     v1: Vec3,
@@ -50,13 +40,6 @@ pub fn triangle_world_to_camera_space_clipped(
         vertex_world_to_camera_space_clipped(camera, v2)
             .and_then(|v2| vertex_world_to_camera_space_clipped(camera, v3).map(|v3| (v1, v2, v3)))
     })
-}
-
-pub fn vertex_world_to_camera_space_clipped(camera: &Camera, v: Vec3) -> Option<Vec3> {
-    let camera_space = (v - camera.translation)
-        .rotate_y(-camera.yaw)
-        .rotate_x(-camera.pitch);
-    (camera_space.z >= camera.nearz && camera_space.z <= camera.farz).then_some(camera_space)
 }
 
 pub fn triangle_camera_to_screen_space(
@@ -74,6 +57,29 @@ pub fn triangle_camera_to_screen_space(
     )
 }
 
+pub fn vertex_world_to_screen_space_clipped(
+    width: usize,
+    height: usize,
+    camera: &Camera,
+    v: Vec3,
+) -> Option<Vec3> {
+    vertex_world_to_camera_space_clipped(camera, v)
+        .map(|v| vertex_camera_to_screen_space(width, height, camera, v))
+}
+
+pub fn vertex_world_to_camera_space_clipped(camera: &Camera, v: Vec3) -> Option<Vec3> {
+    let camera_space = (v - camera.translation)
+        .rotate_y(-camera.yaw)
+        .rotate_x(-camera.pitch);
+    (camera_space.z >= camera.nearz && camera_space.z <= camera.farz).then_some(camera_space)
+}
+
+pub fn vertex_world_to_camera_space(camera: &Camera, v: Vec3) -> Vec3 {
+    (v - camera.translation)
+        .rotate_y(-camera.yaw)
+        .rotate_x(-camera.pitch)
+}
+
 pub fn vertex_camera_to_clip_space(width: usize, height: usize, camera: &Camera, v: Vec3) -> Vec2 {
     // https://en.wikipedia.org/wiki/3D_projection
     // TODO: Precompute fov_scale
@@ -81,6 +87,16 @@ pub fn vertex_camera_to_clip_space(width: usize, height: usize, camera: &Camera,
     let mut proj = v.to_vec2() * fov_scale / v.z;
     proj.x *= height as f32 / width as f32;
     proj
+}
+
+pub fn vertex_world_to_screen_space(width: usize, height: usize, camera: &Camera, v: Vec3) -> Vec3 {
+    let v = vertex_world_to_camera_space(camera, v);
+    let proj = vertex_camera_to_clip_space(width, height, camera, v);
+    Vec3::new(
+        (proj.x + 1.0) / 2.0 * width as f32,
+        (1.0 - (proj.y + 1.0) / 2.0) * height as f32,
+        (v.z - camera.nearz) / camera.farz,
+    )
 }
 
 pub fn vertex_camera_to_screen_space(
