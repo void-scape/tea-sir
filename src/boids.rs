@@ -189,7 +189,7 @@ fn draw_boids(
                 let r = (boid.translation.x.clamp(-BOUNDS, BOUNDS) / BOUNDS + 1.0) / 2.0;
                 let g = (boid.translation.y.clamp(-BOUNDS, BOUNDS) / BOUNDS + 1.0) / 2.0;
                 let b = (boid.translation.z.clamp(-BOUNDS, BOUNDS) / BOUNDS + 1.0) / 2.0;
-                let color = LinearRgb::rgb(r, g, b).to_srgb();
+                let color = LinearRgb::from_rgb(r, g, b).to_srgb();
                 rast::rast_triangle_colored_checked(
                     frame_buffer,
                     zbuffer,
@@ -243,7 +243,7 @@ fn draw_bounds(
                 libm::floorf(v2.x) as i32,
                 libm::floorf(v2.y) as i32,
                 v2.z,
-                Srgb::rgb(0, 255, 0),
+                Srgb::from_rgb(0, 255, 0),
             );
         }
     }

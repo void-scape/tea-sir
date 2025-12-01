@@ -1,4 +1,8 @@
 use crate::math::*;
+use glazer::winit::{
+    event::{DeviceEvent, KeyEvent, WindowEvent},
+    keyboard::{KeyCode, PhysicalKey},
+};
 use rast::tint::*;
 
 #[derive(Debug, Default)]
@@ -23,31 +27,45 @@ pub struct CameraController {
 
 pub fn handle_input(input: glazer::Input, camera: &mut Camera, controller: &mut CameraController) {
     match input {
-        glazer::Input::Key { code, pressed, .. } => match code {
-            glazer::KeyCode::KeyW => {
-                controller.forward_pressed = pressed;
+        glazer::Input::Window(event) => {
+            if let WindowEvent::KeyboardInput {
+                event:
+                    KeyEvent {
+                        physical_key: PhysicalKey::Code(code),
+                        state,
+                        ..
+                    },
+                ..
+            } = event
+            {
+                let pressed = state.is_pressed();
+                match code {
+                    KeyCode::KeyW => {
+                        controller.forward_pressed = pressed;
+                    }
+                    KeyCode::KeyS => {
+                        controller.back_pressed = pressed;
+                    }
+                    KeyCode::KeyA => {
+                        controller.left_pressed = pressed;
+                    }
+                    KeyCode::KeyD => {
+                        controller.right_pressed = pressed;
+                    }
+                    KeyCode::Space => {
+                        controller.up_pressed = pressed;
+                    }
+                    KeyCode::ShiftLeft => {
+                        controller.down_pressed = pressed;
+                    }
+                    _ => {}
+                }
             }
-            glazer::KeyCode::KeyS => {
-                controller.back_pressed = pressed;
-            }
-            glazer::KeyCode::KeyA => {
-                controller.left_pressed = pressed;
-            }
-            glazer::KeyCode::KeyD => {
-                controller.right_pressed = pressed;
-            }
-            glazer::KeyCode::Spacebar => {
-                controller.up_pressed = pressed;
-            }
-            glazer::KeyCode::LeftShift => {
-                controller.down_pressed = pressed;
-            }
-            _ => {}
-        },
-        glazer::Input::MouseMoved { dx, dy } => {
+        }
+        glazer::Input::Device(DeviceEvent::MouseMotion { delta }) => {
             let sensitivity = 0.005;
-            camera.yaw += dx * sensitivity;
-            camera.pitch += dy * sensitivity;
+            camera.yaw += delta.0 as f32 * sensitivity;
+            camera.pitch += delta.1 as f32 * sensitivity;
 
             // Keep the camera's angle from going too high/low.
             const SAFE_FRAC_PI_2: f32 = core::f32::consts::FRAC_PI_2;
@@ -57,6 +75,7 @@ pub fn handle_input(input: glazer::Input, camera: &mut Camera, controller: &mut 
                 camera.pitch = SAFE_FRAC_PI_2;
             }
         }
+        _ => {}
     }
 }
 
@@ -157,7 +176,7 @@ pub fn debug_draw_frustum(
                 libm::floorf(v3.x) as i32,
                 libm::floorf(v3.y) as i32,
                 v3.z,
-                Srgb::rgb(0, 0, 255),
+                Srgb::from_rgb(0, 0, 255),
             );
         }
     }

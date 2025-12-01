@@ -265,6 +265,7 @@ fn draw_model_inner(
                     height: texture.1,
                     texture: texture.2.as_slice(),
                     sampler: rast::Sampler::Bilinear,
+                    blend_mode: rast::BlendMode::None,
                 },
             );
         }
@@ -313,10 +314,10 @@ fn draw_model_inner_no_textures(
                 libm::floorf(v3.x) as i32,
                 libm::floorf(v3.y) as i32,
                 v3.z,
-                LinearRgb::rgb(1.0, 0.0, 0.0),
-                LinearRgb::rgb(0.0, 1.0, 0.0),
-                LinearRgb::rgb(0.0, 0.0, 1.0),
-                rast::ColorShader,
+                LinearRgb::from_rgb(1.0, 0.0, 0.0),
+                LinearRgb::from_rgb(0.0, 1.0, 0.0),
+                LinearRgb::from_rgb(0.0, 0.0, 1.0),
+                rast::ColorShader::default(),
             );
         }
     }

@@ -19,23 +19,23 @@ impl Default for NeutronMemory {
             // https://naif.jpl.nasa.gov/pub/naif/toolkit_docs/C/req/naif_ids.html
             bodies: [
                 // Sun
-                CelestialBody::new(fetch_spatial_data(10), Srgb::rgb(255, 255, 255)),
+                CelestialBody::new(fetch_spatial_data(10), Srgb::from_rgb(255, 255, 255)),
                 // Mercury
-                CelestialBody::new(fetch_spatial_data(199), Srgb::rgb(255, 255, 255)),
+                CelestialBody::new(fetch_spatial_data(199), Srgb::from_rgb(255, 255, 255)),
                 // Venus
-                CelestialBody::new(fetch_spatial_data(299), Srgb::rgb(255, 255, 255)),
+                CelestialBody::new(fetch_spatial_data(299), Srgb::from_rgb(255, 255, 255)),
                 // Earth
-                CelestialBody::new(fetch_spatial_data(399), Srgb::rgb(0, 0, 255)),
+                CelestialBody::new(fetch_spatial_data(399), Srgb::from_rgb(0, 0, 255)),
                 // Mars
-                CelestialBody::new(fetch_spatial_data(499), Srgb::rgb(255, 255, 255)),
+                CelestialBody::new(fetch_spatial_data(499), Srgb::from_rgb(255, 255, 255)),
                 // Jupiter
-                CelestialBody::new(fetch_spatial_data(599), Srgb::rgb(255, 255, 255)),
+                CelestialBody::new(fetch_spatial_data(599), Srgb::from_rgb(255, 255, 255)),
                 // Saturn
-                CelestialBody::new(fetch_spatial_data(699), Srgb::rgb(255, 255, 255)),
+                CelestialBody::new(fetch_spatial_data(699), Srgb::from_rgb(255, 255, 255)),
                 // Uranus
-                CelestialBody::new(fetch_spatial_data(799), Srgb::rgb(255, 255, 255)),
+                CelestialBody::new(fetch_spatial_data(799), Srgb::from_rgb(255, 255, 255)),
                 // Neptune
-                CelestialBody::new(fetch_spatial_data(899), Srgb::rgb(255, 255, 255)),
+                CelestialBody::new(fetch_spatial_data(899), Srgb::from_rgb(255, 255, 255)),
             ],
         }
     }
@@ -131,7 +131,7 @@ pub fn render(
     height: usize,
     camera: &Camera,
 ) {
-    frame_buffer.fill(Srgb::rgb(0, 0, 0));
+    frame_buffer.fill(Srgb::from_rgb(0, 0, 0));
     zbuffer.fill(1.0);
     draw_vanishing_lines(frame_buffer, width, height, camera);
     draw_system(memory, frame_buffer, zbuffer, width, height, camera);

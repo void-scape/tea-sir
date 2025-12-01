@@ -5,19 +5,13 @@ use rast::tint::Srgb;
 use crate::math::*;
 
 pub fn debug_read_file(path: &str) -> Option<Vec<u8>> {
-    #[cfg(target_os = "macos")]
-    {
-        extern crate std;
-        std::fs::read(path).ok()
-    }
+    extern crate std;
+    std::fs::read(path).ok()
 }
 
 pub fn debug_read_file_to_string(path: &str) -> Option<String> {
-    #[cfg(target_os = "macos")]
-    {
-        extern crate std;
-        std::fs::read_to_string(path).ok()
-    }
+    extern crate std;
+    std::fs::read_to_string(path).ok()
 }
 
 /// File should contain only interleaved, 2 channel, i16 audio data at 44100kHz.
@@ -34,7 +28,7 @@ pub fn debug_image_file(path: &str) -> Option<(usize, usize, Vec<Srgb>)> {
     let width = u32::from_le_bytes(bytes[..4].try_into().unwrap());
     let height = u32::from_le_bytes(bytes[4..8].try_into().unwrap());
     assert_eq!(width * height, (bytes.len() as u32 - 8) / 4);
-    let mut pixels = alloc::vec![Srgb::rgb(0, 0, 0); (bytes.len() - 8) / 4];
+    let mut pixels = alloc::vec![Srgb::from_rgb(0, 0, 0); (bytes.len() - 8) / 4];
     for (i, rgba) in bytes[8..].chunks(4).enumerate() {
         pixels[i] = Srgb::new(rgba[0], rgba[1], rgba[2], rgba[3]);
     }
