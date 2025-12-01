@@ -118,7 +118,7 @@ pub fn debug_draw_frustum(
 ) {
     debug_assert_eq!(frame_buffer.len(), zbuffer.len());
     let camera = camera_to_debug;
-    let fov_2y = camera.fov.to_radians() / 2.0;
+    let fov_2y = camera.fov / 2.0;
     // NOTE: The angles are not linear, so you can't just do `fov_2y * aspect`. I
     // am not sure why...
     let fov_2x = libm::atanf(libm::tanf(fov_2y) * width as f32 / height as f32);

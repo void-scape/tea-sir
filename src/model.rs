@@ -1,5 +1,4 @@
 use crate::{camera::Camera, math::*};
-use alloc::vec::Vec;
 use rast::tint::*;
 
 #[derive(Default)]
@@ -19,7 +18,6 @@ pub struct Obb {
     pub max: Vec3,
 }
 
-#[allow(unused)]
 pub fn compute_obb(model: &Model) -> Obb {
     assert_model(model);
 
@@ -47,7 +45,6 @@ fn min_max(model: &Model, f: impl Fn(&Vec3) -> f32) -> (f32, f32) {
     (f(min), f(max))
 }
 
-#[allow(unused)]
 pub fn obb_visible(
     width: usize,
     height: usize,
@@ -69,7 +66,6 @@ pub fn obb_visible(
     false
 }
 
-#[allow(unused)]
 pub fn debug_draw_obb(
     frame_buffer: &mut [Srgb],
     zbuffer: &mut [f32],
@@ -138,7 +134,6 @@ pub fn obb_corners(obb: Obb, translation: Vec3, pitch_yaw_roll: Vec3) -> [Vec3; 
     .map(|v| crate::math::transform_vertex(translation, pitch_yaw_roll, v))
 }
 
-#[allow(unused)]
 pub fn draw_model(
     frame_buffer: &mut [Srgb],
     zbuffer: &mut [f32],
@@ -162,7 +157,6 @@ pub fn draw_model(
     );
 }
 
-#[allow(unused)]
 pub fn draw_model_backface_culled(
     frame_buffer: &mut [Srgb],
     zbuffer: &mut [f32],
@@ -184,6 +178,151 @@ pub fn draw_model_backface_culled(
         pitch_yaw_roll,
         true,
     );
+}
+
+pub fn draw_model_matrix(
+    frame_buffer: &mut [Srgb],
+    zbuffer: &mut [f32],
+    width: usize,
+    height: usize,
+    camera: &Camera,
+    model: &Model,
+    model_matrix: Mat4,
+) {
+    draw_model_inner_matrix(
+        frame_buffer,
+        zbuffer,
+        width,
+        height,
+        camera,
+        model,
+        model_matrix,
+        false,
+    );
+}
+
+fn draw_model_inner_matrix(
+    frame_buffer: &mut [Srgb],
+    zbuffer: &mut [f32],
+    width: usize,
+    height: usize,
+    camera: &Camera,
+    model: &Model,
+    model_matrix: Mat4,
+    backface: bool,
+) {
+    assert_model(model);
+    debug_assert_eq!(frame_buffer.len(), zbuffer.len());
+
+    if model.textures.is_empty() {
+        todo!();
+        // draw_model_inner_no_textures(
+        //     frame_buffer,
+        //     zbuffer,
+        //     width,
+        //     height,
+        //     camera,
+        //     model,
+        //     translation,
+        //     pitch_yaw_roll,
+        //     backface,
+        // );
+        // return;
+    }
+
+    let view_matrix = compute_view_matrix(camera.translation, camera.yaw, camera.pitch);
+    let proj_matrix = compute_perspective_proj_matrix(camera, width, height);
+
+    fn camera_to_screen_space(width: usize, height: usize, mut v: Vec4) -> Vec3 {
+        v.x /= v.w;
+        v.y /= v.w;
+        v.z /= v.w;
+        Vec3::new(
+            (v.x + 1.0) / 2.0 * width as f32,
+            (1.0 - (v.y + 1.0) / 2.0) * height as f32,
+            v.z,
+        )
+    }
+
+    let model_to_view_matrix = view_matrix.mult_mat4(&model_matrix);
+    let model_to_proj_matrix = proj_matrix.mult_mat4(&model_to_view_matrix);
+
+    for (face, face_textures) in model.faces.chunks(3).zip(model.face_textures.chunks(3)) {
+        let mv1 = model.verts[face[0]].extend(1.0);
+        let mv2 = model.verts[face[1]].extend(1.0);
+        let mv3 = model.verts[face[2]].extend(1.0);
+
+        let v1 = model_to_view_matrix.mult_vec4(mv1).reduce();
+        let v2 = model_to_view_matrix.mult_vec4(mv2).reduce();
+        let v3 = model_to_view_matrix.mult_vec4(mv3).reduce();
+
+        let v1z = v1.z;
+        let v2z = v2.z;
+        let v3z = v3.z;
+
+        if v1z <= camera.nearz
+            || v1z >= camera.farz
+            || v2z <= camera.nearz
+            || v2z >= camera.farz
+            || v3z <= camera.nearz
+            || v3z >= camera.farz
+        {
+            continue;
+        }
+
+        if backface {
+            // https://en.wikipedia.org/wiki/Back-face_culling#Implementation
+            let normal = (v3 - v1).cross(v2 - v1);
+            if v1.dot(normal) < 0.0 {
+                continue;
+            }
+        }
+
+        let v1 = model_to_proj_matrix.mult_vec4(mv1);
+        let v2 = model_to_proj_matrix.mult_vec4(mv2);
+        let v3 = model_to_proj_matrix.mult_vec4(mv3);
+
+        let v1 = camera_to_screen_space(width, height, v1);
+        let v2 = camera_to_screen_space(width, height, v2);
+        let v3 = camera_to_screen_space(width, height, v3);
+
+        debug_assert_eq!(face_textures[0].1, face_textures[1].1);
+        debug_assert_eq!(face_textures[2].1, face_textures[1].1);
+
+        let texture = &model.textures[face_textures[0].1];
+        let (uv, _) = face_textures[0];
+        let uv1 = model.uvs[uv];
+        let (uv, _) = face_textures[1];
+        let uv2 = model.uvs[uv];
+        let (uv, _) = face_textures[2];
+        let uv3 = model.uvs[uv];
+
+        rast::rast_triangle_checked(
+            frame_buffer,
+            zbuffer,
+            width,
+            height,
+            libm::floorf(v1.x) as i32,
+            libm::floorf(v1.y) as i32,
+            v1.z,
+            libm::floorf(v2.x) as i32,
+            libm::floorf(v2.y) as i32,
+            v2.z,
+            libm::floorf(v3.x) as i32,
+            libm::floorf(v3.y) as i32,
+            v3.z,
+            (uv1.x, uv1.y),
+            (uv2.x, uv2.y),
+            (uv3.x, uv3.y),
+            rast::TextureShader {
+                width: texture.0,
+                height: texture.1,
+                texture: texture.2.as_slice(),
+                sampler: rast::Sampler::Bilinear,
+                blend_mode: rast::BlendMode::None,
+            },
+        );
+    }
 }
 
 fn draw_model_inner(

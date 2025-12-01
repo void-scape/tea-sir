@@ -1,16 +1,11 @@
-use alloc::string::String;
-use alloc::vec::Vec;
+use crate::math::*;
 use rast::tint::Srgb;
 
-use crate::math::*;
-
 pub fn debug_read_file(path: &str) -> Option<Vec<u8>> {
-    extern crate std;
     std::fs::read(path).ok()
 }
 
 pub fn debug_read_file_to_string(path: &str) -> Option<String> {
-    extern crate std;
     std::fs::read_to_string(path).ok()
 }
 
@@ -28,7 +23,7 @@ pub fn debug_image_file(path: &str) -> Option<(usize, usize, Vec<Srgb>)> {
     let width = u32::from_le_bytes(bytes[..4].try_into().unwrap());
     let height = u32::from_le_bytes(bytes[4..8].try_into().unwrap());
     assert_eq!(width * height, (bytes.len() as u32 - 8) / 4);
-    let mut pixels = alloc::vec![Srgb::from_rgb(0, 0, 0); (bytes.len() - 8) / 4];
+    let mut pixels = vec![Srgb::from_rgb(0, 0, 0); (bytes.len() - 8) / 4];
     for (i, rgba) in bytes[8..].chunks(4).enumerate() {
         pixels[i] = Srgb::new(rgba[0], rgba[1], rgba[2], rgba[3]);
     }
@@ -65,7 +60,13 @@ pub fn debug_obj_file(
     materials: Vec<(String, (usize, usize, Vec<Srgb>))>,
 ) -> Option<crate::model::Model> {
     let obj = debug_read_file_to_string(path)?;
+    debug_obj_str(&obj, materials)
+}
 
+pub fn debug_obj_str(
+    mut obj: &str,
+    materials: Vec<(String, (usize, usize, Vec<Srgb>))>,
+) -> Option<crate::model::Model> {
     let (millis, (faces, face_textures, verts, uvs, textures)) = glazer::debug_time_millis(|| {
         fn read<F: core::str::FromStr>(input: &mut &str) -> Option<F> {
             let split_at = input.chars().position(|c| c.is_whitespace());
@@ -97,7 +98,7 @@ pub fn debug_obj_file(
 
         let mut texture_index = 0;
 
-        let input = &mut obj.as_str();
+        let input = &mut obj;
         while !input.is_empty() {
             let line = eat_line(input);
             if line.starts_with("v ") {
@@ -148,8 +149,7 @@ pub fn debug_obj_file(
     });
 
     glazer::log!(
-        "obj `{}`: loaded {} verts, {} faces in {millis:.2}ms",
-        path,
+        "loaded {} verts, {} faces in {millis:.2}ms",
         verts.len(),
         faces.len()
     );

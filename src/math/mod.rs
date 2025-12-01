@@ -1,6 +1,66 @@
+mod mat;
+mod quat;
 mod vec;
 
+pub use mat::*;
+pub use quat::*;
 pub use vec::*;
+
+// These matrix computations were stolen from `glam`.
+
+#[inline]
+#[must_use]
+pub fn compute_model_matrix(translation: Vec3, rotation: Quat, scale: Vec3) -> Mat4 {
+    let mut mat = rotation.compute_mat4();
+    mat.r1.x *= scale.x;
+    mat.r2.x *= scale.x;
+    mat.r3.x *= scale.x;
+    mat.r1.y *= scale.y;
+    mat.r2.y *= scale.y;
+    mat.r3.y *= scale.y;
+    mat.r1.z *= scale.z;
+    mat.r2.z *= scale.z;
+    mat.r3.z *= scale.z;
+    mat.r1.w = translation.x;
+    mat.r2.w = translation.y;
+    mat.r3.w = translation.z;
+    mat
+}
+
+#[inline]
+#[must_use]
+pub fn compute_view_matrix(translation: Vec3, yaw: f32, pitch: f32) -> Mat4 {
+    // https://www.3dgep.com/understanding-the-view-matrix/#The_View_Matrix
+
+    let (ysin, ycos) = libm::sincosf(-yaw);
+    let (psin, pcos) = libm::sincosf(-pitch);
+
+    let xaxis = Vec3::new(ycos, 0.0, -ysin);
+    let yaxis = Vec3::new(ysin * psin, pcos, ycos * psin);
+    let zaxis = Vec3::new(ysin * pcos, -psin, pcos * ycos);
+
+    Mat4 {
+        r1: xaxis.extend(-xaxis.dot(translation)),
+        r2: yaxis.extend(-yaxis.dot(translation)),
+        r3: (-zaxis).extend(zaxis.dot(translation)),
+        r4: Vec4::w(1.0),
+    }
+}
+
+#[inline]
+#[must_use]
+pub fn compute_perspective_proj_matrix(camera: &Camera, width: usize, height: usize) -> Mat4 {
+    let (sin_fov, cos_fov) = libm::sincosf(0.5 * camera.fov);
+    let h = cos_fov / sin_fov;
+    let w = h * height as f32 / width as f32;
+    let r = camera.farz / (camera.nearz - camera.farz);
+    Mat4 {
+        r1: Vec4::new(w, 0.0, 0.0, 0.0),
+        r2: Vec4::new(0.0, h, 0.0, 0.0),
+        r3: Vec4::new(0.0, 0.0, r, r * camera.nearz),
+        r4: Vec4::new(0.0, 0.0, -1.0, 0.0),
+    }
+}
 
 use crate::camera::Camera;
 
@@ -83,8 +143,8 @@ pub fn vertex_world_to_camera_space(camera: &Camera, v: Vec3) -> Vec3 {
 pub fn vertex_camera_to_clip_space(width: usize, height: usize, camera: &Camera, v: Vec3) -> Vec2 {
     // https://en.wikipedia.org/wiki/3D_projection
     // TODO: Precompute fov_scale
-    let fov_scale = 1.0 / (camera.fov.to_radians() / 2.0).tan();
-    let mut proj = v.to_vec2() * fov_scale / v.z;
+    let fov_scale = 1.0 / (camera.fov / 2.0).tan();
+    let mut proj = v.reduce() * fov_scale / v.z;
     proj.x *= height as f32 / width as f32;
     proj
 }

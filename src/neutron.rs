@@ -1,6 +1,6 @@
 use crate::{camera::Camera, math::*};
-use alloc::collections::vec_deque::VecDeque;
 use rast::tint::*;
+use std::collections::VecDeque;
 
 const AU: f64 = 1.496e11;
 const SCALE: f64 = 20.0;
@@ -186,7 +186,7 @@ fn draw_system(
                 Vec2::new(1.0, 1.0),
                 Vec2::new(0.0, 1.0),
             ]
-            .map(|v| (v - 0.5) * scale + proj.to_vec2());
+            .map(|v| (v - 0.5) * scale + proj.reduce());
 
             rast::rast_quad_colored(
                 frame_buffer,
@@ -243,7 +243,7 @@ fn fetch_spatial_data(body: i32) -> SpatialData {
         .arg("-d")
         .arg("format=text")
         .arg("-d")
-        .arg(&alloc::format!("COMMAND={body}"))
+        .arg(&format!("COMMAND={body}"))
         .arg("-d")
         .arg("OBJ_DATA=YES")
         .arg("-d")

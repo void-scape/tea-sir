@@ -1,5 +1,3 @@
-#![allow(unused)]
-
 use crate::{camera::Camera, math::*};
 use rast::tint::*;
 
