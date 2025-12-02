@@ -1,4 +1,5 @@
 #![feature(vec_into_raw_parts)]
+#![allow(clippy::too_many_arguments)]
 
 use boids::*;
 use math::*;
@@ -15,8 +16,11 @@ mod blender;
 #[allow(unused)]
 mod boids;
 mod camera;
-mod io;
+#[allow(unused)]
+pub mod io;
+#[allow(unused)]
 pub mod math;
+#[allow(unused)]
 pub mod model;
 #[allow(unused)]
 mod neutron;
@@ -52,11 +56,12 @@ pub fn memory() -> Memory<'static> {
             zbuffer: &mut DEPTH_BUFFER,
             camera: Camera {
                 translation: Vec3::new(0.0, 100.0, -100.0),
-                pitch: 45f32.to_radians(),
+                pitch: 0.0,
+                // pitch: 45f32.to_radians(),
                 yaw: 0.0,
                 fov: 90f32.to_radians(),
                 nearz: 0.1,
-                farz: 1000.0,
+                farz: 1_000.0,
             },
             divine_comedy: io::debug_audio_file("assets/divine-comedy.bin")
                 .expect("could not load `divine-comedy.bin`"),

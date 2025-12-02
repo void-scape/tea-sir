@@ -3,44 +3,56 @@ use crate::camera::Camera;
 use crate::io;
 use crate::math::*;
 use crate::model;
+use crate::model::Model;
+use crate::model::Obb;
 use rast::tint::*;
 
 pub struct BlenderMemory {
-    teapot: model::Model,
-    ibuki_obb: model::Obb,
-    ibuki: model::Model,
-    angle: f32,
+    models: Vec<DisplayModel>,
 }
 
 impl Default for BlenderMemory {
     fn default() -> Self {
-        let materials = [
-            ("assets/ibuki/bloomers.bin", "bloomers"),
-            ("assets/ibuki/coat.bin", "coat"),
-            ("assets/ibuki/face.bin", "face"),
-            ("assets/ibuki/halo.bin", "halo"),
-            ("assets/ibuki/package.bin", "package"),
-            ("assets/ibuki/body.bin", "body"),
-            ("assets/ibuki/eye.bin", "eye"),
-            ("assets/ibuki/hair.bin", "hair"),
-            ("assets/ibuki/shirt.bin", "shirt"),
-        ]
-        .into_iter()
-        .map(|(path, name)| io::debug_image_file(path).map(|img| (name.to_string(), img)))
-        .collect::<Option<Vec<_>>>()
-        .expect("failed to load ibuki materials");
+        // let materials = [
+        //     ("assets/ibuki/bloomers.bin", "bloomers"),
+        //     ("assets/ibuki/coat.bin", "coat"),
+        //     ("assets/ibuki/face.bin", "face"),
+        //     ("assets/ibuki/halo.bin", "halo"),
+        //     ("assets/ibuki/package.bin", "package"),
+        //     ("assets/ibuki/body.bin", "body"),
+        //     ("assets/ibuki/eye.bin", "eye"),
+        //     ("assets/ibuki/hair.bin", "hair"),
+        //     ("assets/ibuki/shirt.bin", "shirt"),
+        // ]
+        // .into_iter()
+        // .map(|(path, name)| io::debug_image_file(path).map(|img| (name.to_string(), img)))
+        // .collect::<Option<Vec<_>>>()
+        // .expect("failed to load ibuki materials");
+        //
+        // let ibuki = io::debug_obj_file("assets/ibuki/ibuki.obj", materials)
+        //     .expect("could not load `ibuki.obj`");
 
-        let ibuki = io::debug_obj_file("assets/ibuki/ibuki.obj", materials)
-            .expect("could not load `ibuki.obj`");
+        let dragon = include_str!("../assets/dragon.obj");
+        let dragon_model = io::debug_obj_str(dragon, vec![]).unwrap();
 
         Self {
-            teapot: io::debug_obj_file("assets/teapot.obj", Vec::new())
-                .expect("could not load `teapot.obj`"),
-            ibuki_obb: model::compute_obb(&ibuki),
-            ibuki,
-            angle: 0.0,
+            models: vec![DisplayModel {
+                obb: model::compute_obb(&dragon_model),
+                model: dragon_model,
+                translation: Vec3::ZERO,
+                scale: 1.0,
+                zrotation: 0.0,
+            }],
         }
     }
+}
+
+struct DisplayModel {
+    model: Model,
+    obb: Obb,
+    translation: Vec3,
+    scale: f32,
+    zrotation: f32,
 }
 
 pub fn render(
@@ -52,19 +64,15 @@ pub fn render(
     height: usize,
     delta: f32,
 ) {
-    memory.angle = (memory.angle + delta) % core::f32::consts::TAU;
+    for display in memory.models.iter_mut() {
+        display.zrotation = (display.zrotation + delta) % core::f32::consts::TAU;
 
-    let obb = memory.ibuki_obb;
-    let translation = Vec3::ZERO;
-    let scale = Vec3::splat(1.0);
-    let rotation = Quat::default();
-    let pyr = Vec3::ZERO;
-    // let pyr = Vec3::new(0.0, memory.angle, 0.0);
-    if model::obb_visible(width, height, camera, obb, translation, pyr) {
-        let (dur, _) = glazer::debug_time_millis(|| {
-            // let (dur, model_matrix) =
-            //     glazer::debug_time_nanos(|| compute_model_matrix(translation, rotation, scale));
-            // glazer::log!("  compute matrix: {dur}ns");
+        let obb = display.obb;
+        let translation = Vec3::ZERO;
+        let scale = Vec3::splat(display.scale);
+        let rotation = Quat::from_rotation_y(display.zrotation);
+        let pyr = Vec3::ZERO;
+        if model::obb_visible(width, height, camera, obb, translation, pyr) {
             let model_matrix = compute_model_matrix(translation, rotation, scale);
             model::draw_model_matrix(
                 frame_buffer,
@@ -72,66 +80,23 @@ pub fn render(
                 width,
                 height,
                 camera,
-                &memory.ibuki,
-                model_matrix,
-            );
-        });
-        // glazer::log!("matrix: {dur}ms");
-
-        // let (dur, _) = glazer::debug_time_millis(|| {
-        //     model::draw_model(
-        //         frame_buffer,
-        //         zbuffer,
-        //         width,
-        //         height,
-        //         camera,
-        //         &memory.ibuki,
-        //         translation,
-        //         pyr,
-        //     );
-        // });
-        // glazer::log!("manual: {dur}ms");
-
-        // model::debug_draw_obb(
-        //     frame_buffer,
-        //     zbuffer,
-        //     width,
-        //     height,
-        //     camera,
-        //     obb,
-        //     translation,
-        //     pyr,
-        //     Srgb::rgb(0, 255, 0),
-        // );
-    }
-
-    let obb = model::compute_obb(&memory.teapot);
-    for x in -1..=1 {
-        let translation = Vec3::x(x as f32 * 10.0 + 50.0);
-        let pyr = Vec3::new(memory.angle, memory.angle, memory.angle);
-        if model::obb_visible(width, height, camera, obb, translation, pyr) {
-            model::draw_model(
-                frame_buffer,
-                zbuffer,
-                width,
-                height,
-                camera,
-                &memory.teapot,
-                translation,
-                pyr,
+                &display.model,
+                glam::Vec3::ZERO,
+                glam::Vec3::ONE,
+                glam::Quat::from_rotation_y(display.zrotation),
             );
 
-            model::debug_draw_obb(
-                frame_buffer,
-                zbuffer,
-                width,
-                height,
-                camera,
-                obb,
-                translation,
-                pyr,
-                Srgb::from_rgb(0, 255, 0),
-            );
+            // model::debug_draw_obb(
+            //     frame_buffer,
+            //     zbuffer,
+            //     width,
+            //     height,
+            //     camera,
+            //     obb,
+            //     translation,
+            //     pyr,
+            //     Srgb::from_rgb(0, 255, 0),
+            // );
         }
     }
 }

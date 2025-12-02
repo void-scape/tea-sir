@@ -40,6 +40,9 @@ pub fn handle_input(input: glazer::Input, camera: &mut Camera, controller: &mut 
             {
                 let pressed = state.is_pressed();
                 match code {
+                    KeyCode::Escape => {
+                        std::process::exit(0);
+                    }
                     KeyCode::KeyW => {
                         controller.forward_pressed = pressed;
                     }

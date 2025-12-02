@@ -1,4 +1,5 @@
 use crate::{camera::Camera, math::*};
+use glam::Vec4Swizzles;
 use rast::tint::*;
 
 #[derive(Default)]
@@ -187,7 +188,9 @@ pub fn draw_model_matrix(
     height: usize,
     camera: &Camera,
     model: &Model,
-    model_matrix: Mat4,
+    translation: glam::Vec3,
+    scale: glam::Vec3,
+    rotation: glam::Quat,
 ) {
     draw_model_inner_matrix(
         frame_buffer,
@@ -196,7 +199,9 @@ pub fn draw_model_matrix(
         height,
         camera,
         model,
-        model_matrix,
+        translation,
+        scale,
+        rotation,
         false,
     );
 }
@@ -208,120 +213,243 @@ fn draw_model_inner_matrix(
     height: usize,
     camera: &Camera,
     model: &Model,
-    model_matrix: Mat4,
+    translation: glam::Vec3,
+    scale: glam::Vec3,
+    rotation: glam::Quat,
     backface: bool,
 ) {
     assert_model(model);
     debug_assert_eq!(frame_buffer.len(), zbuffer.len());
 
-    if model.textures.is_empty() {
-        todo!();
-        // draw_model_inner_no_textures(
-        //     frame_buffer,
-        //     zbuffer,
-        //     width,
-        //     height,
-        //     camera,
-        //     model,
-        //     translation,
-        //     pitch_yaw_roll,
-        //     backface,
-        // );
-        // return;
-    }
+    let model_matrix = glam::Mat4::from_scale_rotation_translation(
+        scale,
+        rotation,
+        glam::Vec3::new(0.0, -0.1, -1.0),
+    );
+    // let view_matrix = create_rh_view_matrix(
+    //     glam::Vec3::new(
+    //         camera.translation.x,
+    //         camera.translation.y,
+    //         camera.translation.z,
+    //     ),
+    //     camera.pitch,
+    //     camera.yaw,
+    // );
+    let projection_matrix = glam::Mat4::perspective_rh(
+        camera.fov,
+        width as f32 / height as f32,
+        camera.nearz,
+        camera.farz,
+    );
 
-    let view_matrix = compute_view_matrix(camera.translation, camera.yaw, camera.pitch);
-    let proj_matrix = compute_perspective_proj_matrix(camera, width, height);
+    let model_to_proj_matrix = projection_matrix
+        // .mul_mat4(&view_matrix)
+        .mul_mat4(&model_matrix);
 
-    fn camera_to_screen_space(width: usize, height: usize, mut v: Vec4) -> Vec3 {
+    // fn calculate_camera_vectors(pitch: f32, yaw: f32) -> (glam::Vec3, glam::Vec3) {
+    //     // 1. Calculate the Forward/Direction Vector (dir)
+    //     let (sin_pitch, cos_pitch) = pitch.sin_cos();
+    //     let (sin_yaw, cos_yaw) = yaw.sin_cos();
+    //
+    //     // Assuming Yaw is rotation around Y-axis (Up) and Pitch is rotation around local X-axis.
+    //     let x = cos_pitch * sin_yaw;
+    //     let y = sin_pitch;
+    //     let z = cos_pitch * cos_yaw;
+    //
+    //     let dir = glam::Vec3::new(x, y, z).normalize();
+    //
+    //     // 2. Define the Up Vector
+    //     // Since we are Y-up, the world Up vector is (0, 1, 0).
+    //     let up = glam::Vec3::Y;
+    //
+    //     (dir, up)
+    // }
+    //
+    // pub fn create_rh_view_matrix(translation: glam::Vec3, pitch: f32, yaw: f32) -> glam::Mat4 {
+    //     // The camera's position in world space.
+    //     let eye = translation;
+    //
+    //     let (dir, up) = calculate_camera_vectors(pitch, yaw);
+    //
+    //     // Mat4::look_to_rh (Right-Handed) takes:
+    //     // 1. eye (The camera position/translation)
+    //     // 2. dir (The direction vector the camera is looking)
+    //     // 3. up (The 'up' direction in world space, usually +Y)
+    //     glam::Mat4::look_to_rh(eye, dir, up)
+    // }
+
+    // let view_matrix = compute_view_matrix(camera.translation, camera.yaw, camera.pitch);
+    // let proj_matrix = compute_perspective_proj_matrix(camera, width, height);
+
+    fn camera_to_screen_space(width: usize, height: usize, mut v: glam::Vec4) -> glam::Vec3 {
         v.x /= v.w;
         v.y /= v.w;
         v.z /= v.w;
-        Vec3::new(
+        glam::Vec3::new(
             (v.x + 1.0) / 2.0 * width as f32,
             (1.0 - (v.y + 1.0) / 2.0) * height as f32,
             v.z,
         )
     }
 
-    let model_to_view_matrix = view_matrix.mult_mat4(&model_matrix);
-    let model_to_proj_matrix = proj_matrix.mult_mat4(&model_to_view_matrix);
+    // let model_to_view_matrix = view_matrix.mult_mat4(&model_matrix);
+    // let model_to_proj_matrix = proj_matrix.mult_mat4(&model_to_view_matrix);
 
-    for (face, face_textures) in model.faces.chunks(3).zip(model.face_textures.chunks(3)) {
-        let mv1 = model.verts[face[0]].extend(1.0);
-        let mv2 = model.verts[face[1]].extend(1.0);
-        let mv3 = model.verts[face[2]].extend(1.0);
+    let mut c = 1.0;
+    let diff = 0.8 / (model.faces.len() / 3) as f32;
 
-        let v1 = model_to_view_matrix.mult_vec4(mv1).reduce();
-        let v2 = model_to_view_matrix.mult_vec4(mv2).reduce();
-        let v3 = model_to_view_matrix.mult_vec4(mv3).reduce();
+    if model.textures.is_empty() {
+        for face in model.faces.chunks(3) {
+            let mv1 = model.verts[face[0]].extend(1.0);
+            let mv2 = model.verts[face[1]].extend(1.0);
+            let mv3 = model.verts[face[2]].extend(1.0);
 
-        let v1z = v1.z;
-        let v2z = v2.z;
-        let v3z = v3.z;
+            let mv1 = glam::Vec4::new(mv1.x, mv1.y, mv1.z, mv1.w);
+            let mv2 = glam::Vec4::new(mv2.x, mv2.y, mv2.z, mv2.w);
+            let mv3 = glam::Vec4::new(mv3.x, mv3.y, mv3.z, mv3.w);
 
-        if v1z <= camera.nearz
-            || v1z >= camera.farz
-            || v2z <= camera.nearz
-            || v2z >= camera.farz
-            || v3z <= camera.nearz
-            || v3z >= camera.farz
-        {
-            continue;
+            let v1 = model_to_proj_matrix.mul_vec4(mv1);
+            let v2 = model_to_proj_matrix.mul_vec4(mv2);
+            let v3 = model_to_proj_matrix.mul_vec4(mv3);
+
+            let v1 = camera_to_screen_space(width, height, v1);
+            let v2 = camera_to_screen_space(width, height, v2);
+            let v3 = camera_to_screen_space(width, height, v3);
+
+            // let v1 = model_to_view_matrix.mult_vec4(mv1).reduce();
+            // let v2 = model_to_view_matrix.mult_vec4(mv2).reduce();
+            // let v3 = model_to_view_matrix.mult_vec4(mv3).reduce();
+            //
+            // let v1z = v1.z;
+            // let v2z = v2.z;
+            // let v3z = v3.z;
+            //
+            // if v1z <= camera.nearz
+            //     || v1z >= camera.farz
+            //     || v2z <= camera.nearz
+            //     || v2z >= camera.farz
+            //     || v3z <= camera.nearz
+            //     || v3z >= camera.farz
+            // {
+            //     continue;
+            // }
+            //
+            // if backface {
+            //     // https://en.wikipedia.org/wiki/Back-face_culling#Implementation
+            //     let normal = (v3 - v1).cross(v2 - v1);
+            //     if v1.dot(normal) < 0.0 {
+            //         continue;
+            //     }
+            // }
+
+            // let v1 = model_to_proj_matrix.mult_vec4(mv1);
+            // let v2 = model_to_proj_matrix.mult_vec4(mv2);
+            // let v3 = model_to_proj_matrix.mult_vec4(mv3);
+
+            // let v1 = camera_to_screen_space(width, height, v1);
+            // let v2 = camera_to_screen_space(width, height, v2);
+            // let v3 = camera_to_screen_space(width, height, v3);
+
+            rast::rast_triangle_checked(
+                frame_buffer,
+                zbuffer,
+                width,
+                height,
+                libm::floorf(v1.x) as i32,
+                libm::floorf(v1.y) as i32,
+                v1.z,
+                libm::floorf(v2.x) as i32,
+                libm::floorf(v2.y) as i32,
+                v2.z,
+                libm::floorf(v3.x) as i32,
+                libm::floorf(v3.y) as i32,
+                v3.z,
+                LinearRgb::from_rgb(c, c, c),
+                LinearRgb::from_rgb(c, c, c),
+                LinearRgb::from_rgb(c, c, c),
+                rast::ColorShader::default(),
+            );
+
+            c -= diff;
         }
-
-        if backface {
-            // https://en.wikipedia.org/wiki/Back-face_culling#Implementation
-            let normal = (v3 - v1).cross(v2 - v1);
-            if v1.dot(normal) < 0.0 {
-                continue;
-            }
-        }
-
-        let v1 = model_to_proj_matrix.mult_vec4(mv1);
-        let v2 = model_to_proj_matrix.mult_vec4(mv2);
-        let v3 = model_to_proj_matrix.mult_vec4(mv3);
-
-        let v1 = camera_to_screen_space(width, height, v1);
-        let v2 = camera_to_screen_space(width, height, v2);
-        let v3 = camera_to_screen_space(width, height, v3);
-
-        debug_assert_eq!(face_textures[0].1, face_textures[1].1);
-        debug_assert_eq!(face_textures[2].1, face_textures[1].1);
-
-        let texture = &model.textures[face_textures[0].1];
-        let (uv, _) = face_textures[0];
-        let uv1 = model.uvs[uv];
-        let (uv, _) = face_textures[1];
-        let uv2 = model.uvs[uv];
-        let (uv, _) = face_textures[2];
-        let uv3 = model.uvs[uv];
-
-        rast::rast_triangle_checked(
-            frame_buffer,
-            zbuffer,
-            width,
-            height,
-            libm::floorf(v1.x) as i32,
-            libm::floorf(v1.y) as i32,
-            v1.z,
-            libm::floorf(v2.x) as i32,
-            libm::floorf(v2.y) as i32,
-            v2.z,
-            libm::floorf(v3.x) as i32,
-            libm::floorf(v3.y) as i32,
-            v3.z,
-            (uv1.x, uv1.y),
-            (uv2.x, uv2.y),
-            (uv3.x, uv3.y),
-            rast::TextureShader {
-                width: texture.0,
-                height: texture.1,
-                texture: texture.2.as_slice(),
-                sampler: rast::Sampler::Bilinear,
-                blend_mode: rast::BlendMode::None,
-            },
-        );
+    } else {
+        todo!("update to glam");
+        // for (face, face_textures) in model.faces.chunks(3).zip(model.face_textures.chunks(3)) {
+        //     let mv1 = model.verts[face[0]].extend(1.0);
+        //     let mv2 = model.verts[face[1]].extend(1.0);
+        //     let mv3 = model.verts[face[2]].extend(1.0);
+        //
+        //     let v1 = model_to_view_matrix.mult_vec4(mv1).reduce();
+        //     let v2 = model_to_view_matrix.mult_vec4(mv2).reduce();
+        //     let v3 = model_to_view_matrix.mult_vec4(mv3).reduce();
+        //
+        //     let v1z = v1.z;
+        //     let v2z = v2.z;
+        //     let v3z = v3.z;
+        //
+        //     if v1z <= camera.nearz
+        //         || v1z >= camera.farz
+        //         || v2z <= camera.nearz
+        //         || v2z >= camera.farz
+        //         || v3z <= camera.nearz
+        //         || v3z >= camera.farz
+        //     {
+        //         continue;
+        //     }
+        //
+        //     if backface {
+        //         // https://en.wikipedia.org/wiki/Back-face_culling#Implementation
+        //         let normal = (v3 - v1).cross(v2 - v1);
+        //         if v1.dot(normal) < 0.0 {
+        //             continue;
+        //         }
+        //     }
+        //
+        //     let v1 = model_to_proj_matrix.mult_vec4(mv1);
+        //     let v2 = model_to_proj_matrix.mult_vec4(mv2);
+        //     let v3 = model_to_proj_matrix.mult_vec4(mv3);
+        //
+        //     let v1 = camera_to_screen_space(width, height, v1);
+        //     let v2 = camera_to_screen_space(width, height, v2);
+        //     let v3 = camera_to_screen_space(width, height, v3);
+        //
+        //     debug_assert_eq!(face_textures[0].1, face_textures[1].1);
+        //     debug_assert_eq!(face_textures[2].1, face_textures[1].1);
+        //
+        //     let texture = &model.textures[face_textures[0].1];
+        //     let (uv, _) = face_textures[0];
+        //     let uv1 = model.uvs[uv];
+        //     let (uv, _) = face_textures[1];
+        //     let uv2 = model.uvs[uv];
+        //     let (uv, _) = face_textures[2];
+        //     let uv3 = model.uvs[uv];
+        //
+        //     rast::rast_triangle_checked(
+        //         frame_buffer,
+        //         zbuffer,
+        //         width,
+        //         height,
+        //         libm::floorf(v1.x) as i32,
+        //         libm::floorf(v1.y) as i32,
+        //         v1.z,
+        //         libm::floorf(v2.x) as i32,
+        //         libm::floorf(v2.y) as i32,
+        //         v2.z,
+        //         libm::floorf(v3.x) as i32,
+        //         libm::floorf(v3.y) as i32,
+        //         v3.z,
+        //         (uv1.x, uv1.y),
+        //         (uv2.x, uv2.y),
+        //         (uv3.x, uv3.y),
+        //         rast::TextureShader {
+        //             width: texture.0,
+        //             height: texture.1,
+        //             texture: texture.2.as_slice(),
+        //             sampler: rast::Sampler::Bilinear,
+        //             blend_mode: rast::BlendMode::None,
+        //         },
+        //     );
+        // }
     }
 }
 
@@ -471,8 +599,8 @@ fn assert_obb(obb: Obb) {
 fn assert_model(model: &Model) {
     debug_assert!(!model.verts.is_empty());
     debug_assert!(!model.faces.is_empty());
-    debug_assert!(model.faces.len() % 3 == 0);
-    debug_assert!(model.face_textures.len() % 3 == 0);
+    debug_assert!(model.faces.len().is_multiple_of(3));
+    debug_assert!(model.face_textures.len().is_multiple_of(3));
     debug_assert!(
         model.face_textures.is_empty() == model.uvs.is_empty()
             && model.uvs.is_empty() == model.textures.is_empty()

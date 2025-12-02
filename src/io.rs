@@ -119,7 +119,7 @@ pub fn debug_obj_str(
                         for (i, mut v) in vset.split("/").enumerate() {
                             if i == 0 {
                                 faces.push(read::<usize>(&mut v).unwrap() - 1);
-                            } else if i == 1 {
+                            } else if i == 1 && !v.is_empty() {
                                 face_textures
                                     .push((read::<usize>(&mut v).unwrap() - 1, texture_index));
                             }
