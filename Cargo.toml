@@ -27,6 +27,12 @@ opt-level = 3
 [profile.dev]
 opt-level = 1
 
+[profile.release.package."*"]
+opt-level = 3
+[profile.release]
+opt-level = 3
+debug = true
+
 [dev-dependencies]
 criterion = "0.5.1"
 

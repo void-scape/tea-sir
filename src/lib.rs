@@ -1,3 +1,4 @@
+#![feature(portable_simd)]
 #![feature(vec_into_raw_parts)]
 #![allow(clippy::too_many_arguments)]
 

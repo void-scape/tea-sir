@@ -1,6 +1,7 @@
 use crate::math::vec::Vec4;
+use std::arch::asm;
 
-pub mod simd {
+pub mod simd_cm {
     use std::arch::x86_64::{__m128, _mm_add_ps, _mm_mul_ps, _mm_shuffle_ps};
 
     #[repr(C)]
@@ -10,9 +11,11 @@ pub mod simd {
     }
 
     /// [x, y, z, w] packed into 128-bit SIMD register.
+    #[derive(Clone, Copy)]
     pub struct Vec4(__m128);
 
     impl Vec4 {
+        #[inline]
         pub fn new(x: f32, y: f32, z: f32, w: f32) -> Self {
             unsafe { Vec4(UnionCast { a: [x, y, z, w] }.v.0) }
         }
@@ -27,10 +30,6 @@ pub mod simd {
         pub w_axis: Vec4,
     }
 
-    /// │ a b c d │ │x│   │ x'│
-    /// │ e f g h │ │y│ = │ y'│
-    /// │ i j k l │ │z│   │ z'│
-    /// │ m n o p │ │w│   │ w'│
     impl Mat4 {
         #[inline]
         pub fn mult_vec4(&self, v: Vec4) -> Vec4 {
@@ -51,6 +50,165 @@ pub mod simd {
                 ))
             }
         }
+    }
+}
+
+pub mod simd_rm {
+    use std::{
+        arch::x86_64::{__m128, _mm_add_ps, _mm_mul_ps, _mm_shuffle_ps},
+        simd::{f32x4, num::SimdFloat},
+    };
+
+    #[repr(C)]
+    union UnionCast {
+        a: [f32; 4],
+        v: std::mem::ManuallyDrop<Vec4>,
+    }
+
+    /// [x, y, z, w] packed into 128-bit SIMD register.
+    #[derive(Clone, Copy)]
+    pub struct Vec4(f32x4);
+
+    impl Vec4 {
+        #[inline]
+        pub fn new(x: f32, y: f32, z: f32, w: f32) -> Self {
+            unsafe { Vec4(UnionCast { a: [x, y, z, w] }.v.0) }
+        }
+    }
+
+    /// Row Major 4x4 Matrix.
+    #[repr(C)]
+    pub struct Mat4 {
+        pub r1: Vec4,
+        pub r2: Vec4,
+        pub r3: Vec4,
+        pub r4: Vec4,
+    }
+
+    impl Mat4 {
+        #[inline]
+        pub fn mult_vec4(&self, v: Vec4) -> Vec4 {
+            unsafe {
+                let r1 = self.r1.0 * v.0;
+                let r2 = self.r2.0 * v.0;
+                let r3 = self.r3.0 * v.0;
+                let r4 = self.r4.0 * v.0;
+
+                Vec4::new(
+                    r1.reduce_sum(),
+                    r2.reduce_sum(),
+                    r3.reduce_sum(),
+                    r4.reduce_sum(),
+                )
+            }
+        }
+    }
+}
+
+pub mod cm {
+    use crate::math::Vec4;
+    use std::arch::asm;
+
+    #[repr(C)]
+    #[derive(Debug, Clone, Copy, PartialEq)]
+    pub struct Mat4 {
+        pub c1: Vec4,
+        pub c2: Vec4,
+        pub c3: Vec4,
+        pub c4: Vec4,
+    }
+
+    impl Mat4 {
+        #[inline]
+        pub fn mult_vec4(&self, rhs: Vec4) -> Vec4 {
+            let mut res = Vec4::default();
+
+            unsafe {
+                asm!(
+                    // x
+                    "fld dword ptr [{m}]",
+                    "fmul dword ptr [{v}]",
+                    "fld dword ptr [{m} + 16]",
+                    "fmul dword ptr [{v} + 4]",
+                    "faddp st(1), st(0)",
+
+                    "fld dword ptr [{m} + 32]",
+                    "fmul dword ptr [{v} + 8]",
+                    "faddp st(1), st(0)",
+
+                    "fld dword ptr [{m} + 48]",
+                    "fmul dword ptr [{v} + 12]",
+                    "faddp st(1), st(0)",
+
+                    "fstp dword ptr [{out}]",
+
+                    // y
+                    "fld dword ptr [{m} + 4]",
+                    "fmul dword ptr [{v}]",
+                    "fld dword ptr [{m} + 20]",
+                    "fmul dword ptr [{v} + 4]",
+                    "faddp st(1), st(0)",
+
+                    "fld dword ptr [{m} + 36]",
+                    "fmul dword ptr [{v} + 8]",
+                    "faddp st(1), st(0)",
+
+                    "fld dword ptr [{m} + 52]",
+                    "fmul dword ptr [{v} + 12]",
+                    "faddp st(1), st(0)",
+
+                    "fstp dword ptr [{out} + 4]",
+
+                    // z
+                    "fld dword ptr [{m} + 8]",
+                    "fmul dword ptr [{v}]",
+                    "fld dword ptr [{m} + 24]",
+                    "fmul dword ptr [{v} + 4]",
+                    "faddp st(1), st(0)",
+
+                    "fld dword ptr [{m} + 40]",
+                    "fmul dword ptr [{v} + 8]",
+                    "faddp st(1), st(0)",
+
+                    "fld dword ptr [{m} + 56]",
+                    "fmul dword ptr [{v} + 12]",
+                    "faddp st(1), st(0)",
+
+                    "fstp dword ptr [{out} + 8]",
+
+                    // w
+                    "fld dword ptr [{m} + 12]",
+                    "fmul dword ptr [{v}]",
+                    "fld dword ptr [{m} + 28]",
+                    "fmul dword ptr [{v} + 4]",
+                    "faddp st(1), st(0)",
+
+                    "fld dword ptr [{m} + 44]",
+                    "fmul dword ptr [{v} + 8]",
+                    "faddp st(1), st(0)",
+
+                    "fld dword ptr [{m} + 60]",
+                    "fmul dword ptr [{v} + 12]",
+                    "faddp st(1), st(0)",
+
+                    "fstp dword ptr [{out} + 12]",
+
+                    m = in(reg) self,
+                    v = in(reg) &rhs,
+                    out = in(reg) &mut res,
+                );
+            }
+            res
+        }
+
+        // #[inline]
+        // pub fn mult_vec4(&self, rhs: Vec4) -> Vec4 {
+        //     let mut out = self.c1 * rhs.x;
+        //     out += self.c2 * rhs.y;
+        //     out += self.c3 * rhs.z;
+        //     out += self.c4 * rhs.w;
+        //     out
+        // }
     }
 }
 
@@ -79,13 +237,96 @@ impl Mat4 {
 
     #[inline]
     pub fn mult_vec4(&self, rhs: Vec4) -> Vec4 {
-        Vec4::new(
-            self.r1.dot(rhs),
-            self.r2.dot(rhs),
-            self.r3.dot(rhs),
-            self.r4.dot(rhs),
-        )
+        let mut res = Vec4::default();
+
+        unsafe {
+            asm!(
+                // row 1
+                "fld dword ptr [{m}]",
+                "fmul dword ptr [{v}]",
+                "fld dword ptr [{m} + 4]",
+                "fmul dword ptr [{v} + 4]",
+                "faddp st(1), st(0)",
+
+                "fld dword ptr [{m} + 8]",
+                "fmul dword ptr [{v} + 8]",
+                "faddp st(1), st(0)",
+
+                "fld dword ptr [{m} + 12]",
+                "fmul dword ptr [{v} + 12]",
+                "faddp st(1), st(0)",
+
+                "fstp dword ptr [{out}]",
+
+                // row 2
+                "fld dword ptr [{m} + 16]",
+                "fmul dword ptr [{v}]",
+                "fld dword ptr [{m} + 20]",
+                "fmul dword ptr [{v} + 4]",
+                "faddp st(1), st(0)",
+
+                "fld dword ptr [{m} + 24]",
+                "fmul dword ptr [{v} + 8]",
+                "faddp st(1), st(0)",
+
+                "fld dword ptr [{m} + 28]",
+                "fmul dword ptr [{v} + 12]",
+                "faddp st(1), st(0)",
+
+                "fstp dword ptr [{out} + 4]",
+
+                // row 3
+                "fld dword ptr [{m} + 32]",
+                "fmul dword ptr [{v}]",
+                "fld dword ptr [{m} + 36]",
+                "fmul dword ptr [{v} + 4]",
+                "faddp st(1), st(0)",
+
+                "fld dword ptr [{m} + 40]",
+                "fmul dword ptr [{v} + 8]",
+                "faddp st(1), st(0)",
+
+                "fld dword ptr [{m} + 44]",
+                "fmul dword ptr [{v} + 12]",
+                "faddp st(1), st(0)",
+
+                "fstp dword ptr [{out} + 8]",
+
+                // row 4
+                "fld dword ptr [{m} + 48]",
+                "fmul dword ptr [{v}]",
+                "fld dword ptr [{m} + 52]",
+                "fmul dword ptr [{v} + 4]",
+                "faddp st(1), st(0)",
+
+                "fld dword ptr [{m} + 56]",
+                "fmul dword ptr [{v} + 8]",
+                "faddp st(1), st(0)",
+
+                "fld dword ptr [{m} + 60]",
+                "fmul dword ptr [{v} + 12]",
+                "faddp st(1), st(0)",
+
+                "fstp dword ptr [{out} + 12]",
+
+                m = in(reg) self,
+                v = in(reg) &rhs,
+                out = in(reg) &mut res,
+            );
+        }
+
+        res
     }
+
+    // #[inline]
+    // pub fn mult_vec4(&self, rhs: Vec4) -> Vec4 {
+    //     Vec4::new(
+    //         self.r1.dot(rhs),
+    //         self.r2.dot(rhs),
+    //         self.r3.dot(rhs),
+    //         self.r4.dot(rhs),
+    //     )
+    // }
 
     #[inline]
     pub fn transpose(&self) -> Self {

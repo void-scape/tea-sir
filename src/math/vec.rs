@@ -130,6 +130,7 @@ macro_rules! impl_math_ops {
     };
 }
 
+#[repr(C)]
 #[derive(Debug, Default, Clone, Copy, PartialEq)]
 pub struct Vec4 {
     pub x: f32,
